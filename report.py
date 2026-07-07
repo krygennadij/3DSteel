@@ -19,6 +19,7 @@ from openpyxl.utils import get_column_letter
 import pandas as pd
 
 from docx import Document
+from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -142,7 +143,7 @@ def _cell_fill(cell, hex_color: str) -> None:
 
 
 def _cell_text(cell, text: str, bold=False, size_pt=8,
-               color_hex: str = None, align="left") -> None:
+               color_hex: str = None, align="center") -> None:
     p = cell.paragraphs[0]
     p.clear()
     run = p.add_run(str(text))
@@ -155,7 +156,8 @@ def _cell_text(cell, text: str, bold=False, size_pt=8,
         "left":   WD_ALIGN_PARAGRAPH.LEFT,
         "center": WD_ALIGN_PARAGRAPH.CENTER,
         "right":  WD_ALIGN_PARAGRAPH.RIGHT,
-    }.get(align, WD_ALIGN_PARAGRAPH.LEFT)
+    }.get(align, WD_ALIGN_PARAGRAPH.CENTER)
+    cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
 
 def _add_df_table(doc: Document, df: pd.DataFrame,
