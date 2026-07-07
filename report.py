@@ -9,7 +9,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
 import openpyxl
-from openpyxl.chart import LineChart, Reference
+from openpyxl.chart import Reference, ScatterChart, Series
+from openpyxl.chart.axis import ChartLines
+from openpyxl.chart.marker import Marker
 from openpyxl.styles import (Alignment, Border, Font, PatternFill, Side,
                               numbers)
 from openpyxl.utils import get_column_letter
@@ -466,44 +468,48 @@ def _xl_section_title(ws, text: str, row: int, ncols: int) -> None:
                    end_row=row, end_column=ncols)
 
 
-def _make_capacity_chart(ws_data, n_rows: int) -> LineChart:
-    """Создаёт нативный Excel LineChart несущей способности vs момента."""
-    chart = LineChart()
+def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
+    """Создаёт нативный Excel ScatterChart (Точечная с гладкими кривыми)."""
+    chart = ScatterChart()
     chart.title  = "Несущая способность при пожаре"
     chart.style  = 10
-    chart.y_axis.title = "Момент, кНм"
+    chart.scatterStyle = "smooth"
     chart.x_axis.title = "Время, мин"
+    chart.x_axis.axPos = "b"
+    chart.y_axis.title = "Момент, кНм"
+    chart.y_axis.axPos = "l"
     chart.height = 14
     chart.width  = 22
+
+    # Ось X — время (столбец A), используется как реальные числовые значения
+    x_ref = Reference(ws_data, min_col=1, min_row=2, max_row=n_rows + 1)
 
     # Серия 1: несущая способность (столбец B)
     cap_ref = Reference(ws_data, min_col=2, max_col=2,
                         min_row=1, max_row=n_rows + 1)
-    chart.add_data(cap_ref, titles_from_data=True)
+    s0 = Series(cap_ref, x_ref, title_from_data=True)
+    s0.marker = Marker(symbol="none")
+    s0.graphicalProperties.line.solidFill = "E60000"
+    s0.graphicalProperties.line.width = 25000   # 1/12700 pt → ~2pt
+    s0.smooth = True
+    chart.series.append(s0)
 
     # Серия 2: момент от нагрузки (столбец C)
     mom_ref = Reference(ws_data, min_col=3, max_col=3,
                         min_row=1, max_row=n_rows + 1)
-    chart.add_data(mom_ref, titles_from_data=True)
-
-    # Ось X — время (столбец A)
-    cats = Reference(ws_data, min_col=1, min_row=2, max_row=n_rows + 1)
-    chart.set_categories(cats)
-
-    # Стили линий
-    from openpyxl.drawing.line import LineProperties
-    from openpyxl.drawing.fill import ColorChoice
-
-    s0 = chart.series[0]
-    s0.graphicalProperties.line.solidFill = "E60000"
-    s0.graphicalProperties.line.width = 25000   # 1/12700 pt → ~2pt
-    s0.smooth = True
-
-    s1 = chart.series[1]
+    s1 = Series(mom_ref, x_ref, title_from_data=True)
+    s1.marker = Marker(symbol="none")
     s1.graphicalProperties.line.solidFill = "0055CC"
     s1.graphicalProperties.line.width = 25000
     s1.graphicalProperties.line.dashDot = "dash"
-    s1.smooth = False
+    s1.smooth = True
+    chart.series.append(s1)
+
+    # Основные линии сетки по обеим осям (в т.ч. вертикальные)
+    chart.x_axis.majorGridlines = ChartLines()
+    chart.y_axis.majorGridlines = ChartLines()
+    chart.x_axis.delete = False
+    chart.y_axis.delete = False
 
     return chart
 
