@@ -11,6 +11,7 @@ import numpy as np
 import openpyxl
 from openpyxl.chart import Reference, ScatterChart, Series
 from openpyxl.chart.axis import ChartLines
+from openpyxl.chart.layout import Layout, ManualLayout
 from openpyxl.chart.marker import Marker
 from openpyxl.styles import (Alignment, Border, Font, PatternFill, Side,
                               numbers)
@@ -510,6 +511,11 @@ def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
     chart.y_axis.majorGridlines = ChartLines()
     chart.x_axis.delete = False
     chart.y_axis.delete = False
+
+    # Без ручного layout заголовок оси Y у Excel наезжает на подписи делений
+    chart.y_axis.title.layout = Layout(
+        manualLayout=ManualLayout(xMode="edge", yMode="edge", x=0.01, y=0.30)
+    )
 
     return chart
 
