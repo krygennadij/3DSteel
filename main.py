@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from calc import SteelDatabase, FireCalcResult, compute
+from report import make_word_report, make_excel_report
 
 _OGZ_EXCEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "температура с ОГЗ.xlsx")
 
@@ -544,7 +545,7 @@ def main():
         "Параметры — в боковой панели слева."
     )
 
-    tab1, tab2 = st.tabs(["📊 Несущая способность", "📐 Параметры огнезащиты"])
+    tab1, tab2, tab3 = st.tabs(["📊 Несущая способность", "📐 Параметры огнезащиты", "📄 Отчёт"])
 
     with tab1:
         # ── Баннер с результатом ─────────────────────────────────────────────
@@ -754,6 +755,80 @@ def main():
             )
         else:
             st.warning("Геометрические данные или погонная масса недоступны для этого профиля.")
+
+    # ── Вкладка 3: Отчёт ─────────────────────────────────────────────────────
+    with tab3:
+        st.subheader("Выгрузка отчёта")
+        st.markdown(
+            "**Word (.docx)** — подробный текстовый отчёт со схемами, графиком "
+            "и всеми расчётными таблицами.  \n"
+            "**Excel (.xlsx)** — все таблицы расчёта и нативный Excel-график "
+            "несущей способности (редактируемый)."
+        )
+
+        _geom_df_report = None
+        if has_dims and m_dim is not None:
+            _, _, _geom_df_report = calc_geometry(
+                b_dim, h_dim, t_dim, s_dim, m_dim,
+                A_cm2_table=A_dim, R_mm=R_dim,
+            )
+
+        col_w, col_x = st.columns(2)
+
+        with col_w:
+            st.markdown("#### Word-отчёт")
+            if st.button("Сформировать Word", use_container_width=True):
+                with st.spinner("Генерация..."):
+                    docx_bytes = make_word_report(
+                        res=res,
+                        doc_name=selected_doc,
+                        profile_key=selected_profile,
+                        grade=selected_grade,
+                        load_kg=load_value,
+                        length_m=length_value,
+                        temp_source=temp_source,
+                        b_mm=b_dim if has_dims else None,
+                        h_mm=h_dim if has_dims else None,
+                        t_mm=t_dim if has_dims else None,
+                        s_mm=s_dim if has_dims else None,
+                        m_kgm=m_dim,
+                        heated_sides=st.session_state.heated_sides,
+                        geom_df=_geom_df_report,
+                    )
+                st.download_button(
+                    label="⬇ Скачать Word (.docx)",
+                    data=docx_bytes,
+                    file_name=f"огнестойкость_{selected_profile}_{selected_grade}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                )
+
+        with col_x:
+            st.markdown("#### Excel-отчёт")
+            if st.button("Сформировать Excel", use_container_width=True):
+                with st.spinner("Генерация..."):
+                    xlsx_bytes = make_excel_report(
+                        res=res,
+                        doc_name=selected_doc,
+                        profile_key=selected_profile,
+                        grade=selected_grade,
+                        load_kg=load_value,
+                        length_m=length_value,
+                        temp_source=temp_source,
+                        b_mm=b_dim if has_dims else None,
+                        h_mm=h_dim if has_dims else None,
+                        t_mm=t_dim if has_dims else None,
+                        s_mm=s_dim if has_dims else None,
+                        m_kgm=m_dim,
+                        geom_df=_geom_df_report,
+                    )
+                st.download_button(
+                    label="⬇ Скачать Excel (.xlsx)",
+                    data=xlsx_bytes,
+                    file_name=f"огнестойкость_{selected_profile}_{selected_grade}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
 
 
 if __name__ == "__main__":
