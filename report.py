@@ -238,6 +238,16 @@ def _feq(doc: Document, tokens: list, size: int = 11, align: str = "center",
             run.font.subscript = True
 
 
+def _mixed_paragraph(doc: Document, tokens: list, size: int = 10) -> None:
+    """Обычный (не центрированный) абзац с отдельными подстрочными фрагментами."""
+    p = doc.add_paragraph()
+    for text, is_sub in tokens:
+        run = p.add_run(text)
+        run.font.size = Pt(size)
+        if is_sub:
+            run.font.subscript = True
+
+
 def _fnum(v, nd: int = 2) -> str:
     if v is None or (isinstance(v, (float, np.floating)) and not np.isfinite(v)):
         return "—"
@@ -327,19 +337,19 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         "Коэффициент снижения предела текучести каждого участка сечения — отношение "
         "предела текучести стали при текущей температуре к пределу текучести при 20 °C:"
     ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_sym("k", "x"), _n(" = R"), _sym("y", "x"), _n("(t)  /  R"),
+    _feq(doc, _cat(_sym("γ", "x"), _n(" = R"), _sym("y", "x"), _n("(t)  /  R"),
                    _sym("y", "x"), _n("(20 °C)")), italic=True)
     doc.add_paragraph(
         f"При t = {demo} мин температуры участков: нижняя полка — {temp_lower:.0f} °C, "
         f"стенка — {temp_web:.0f} °C, верхняя полка — {temp_upper:.0f} °C."
     ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_sym("k", "н"),  _n(f" = {yld_lower:.1f} / {yld_lower_0:.1f} = {k_lower:.3f}")))
-    _feq(doc, _cat(_sym("k", "ст"), _n(f" = {yld_web:.1f} / {yld_web_0:.1f} = {k_web:.3f}")))
-    _feq(doc, _cat(_sym("k", "в"),  _n(f" = {yld_upper:.1f} / {yld_upper_0:.1f} = {k_upper:.3f}")))
+    _feq(doc, _cat(_sym("γ", "н"),  _n(f" = {yld_lower:.1f} / {yld_lower_0:.1f} = {k_lower:.3f}")))
+    _feq(doc, _cat(_sym("γ", "ст"), _n(f" = {yld_web:.1f} / {yld_web_0:.1f} = {k_web:.3f}")))
+    _feq(doc, _cat(_sym("γ", "в"),  _n(f" = {yld_upper:.1f} / {yld_upper_0:.1f} = {k_upper:.3f}")))
 
     # 2. Нормативное сопротивление
     doc.add_heading(f"{section_no}.2. Нормативное сопротивление стали", level=2)
-    _feq(doc, _cat(_sym("R", "n,x"), _n(" = "), _sym("k", "x"), _n(" · R"),
+    _feq(doc, _cat(_sym("R", "n,x"), _n(" = "), _sym("γ", "x"), _n(" · R"),
                    _sym("y", "x"), _n("(20 °C) · 10.197")), italic=True)
     _feq(doc, _cat(_sym("R", "n,н"),
                    _n(f" = {k_lower:.3f} · {yld_lower_0:.1f} · 10.197 = {rn_lower:.1f} кгс/см²")))
@@ -353,9 +363,9 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
     doc.add_paragraph(
         "Сначала проверяется, укладывается ли граница сжатой зоны в толщину полки (x ≤ t):"
     ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_n("a = ("), _sym("k", "в"), _n("·b·t + "), _sym("k", "ст"),
-                   _n("·s·h − 2"), _sym("k", "ст"), _n("·s·t + "), _sym("k", "н"),
-                   _n("·b·t)  /  (2"), _sym("k", "в"), _n("·b)")), italic=True)
+    _feq(doc, _cat(_n("a = ("), _sym("γ", "в"), _n("·b·t + "), _sym("γ", "ст"),
+                   _n("·s·h − 2"), _sym("γ", "ст"), _n("·s·t + "), _sym("γ", "н"),
+                   _n("·b·t)  /  (2"), _sym("γ", "в"), _n("·b)")), italic=True)
     _feq(doc, _cat(_n(
         f"a = ({k_upper:.3f}·{b_mm:.0f}·{t_mm:.1f} + {k_web:.3f}·{s_mm:.1f}·{h_mm:.0f} − "
         f"2·{k_web:.3f}·{s_mm:.1f}·{t_mm:.1f} + {k_lower:.3f}·{b_mm:.0f}·{t_mm:.1f}) / "
@@ -366,8 +376,8 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
             f"Так как a = {_fnum(a_flange)} мм > t = {t_mm:.1f} мм, нейтральная ось лежит "
             f"в стенке — показатель сжатой зоны пересчитывается по формуле для стенки:"
         ).runs[0].font.size = Pt(10)
-        _feq(doc, _cat(_n("a = ("), _sym("k", "ст"), _n("·h·s − "), _sym("k", "в"),
-                       _n("·t·b + "), _sym("k", "н"), _n("·t·b)  /  (2"), _sym("k", "ст"),
+        _feq(doc, _cat(_n("a = ("), _sym("γ", "ст"), _n("·h·s − "), _sym("γ", "в"),
+                       _n("·t·b + "), _sym("γ", "н"), _n("·t·b)  /  (2"), _sym("γ", "ст"),
                        _n("·s)")), italic=True)
         _feq(doc, _cat(_n(
             f"a = ({k_web:.3f}·{h_mm:.0f}·{s_mm:.1f} − {k_upper:.3f}·{t_mm:.1f}·{b_mm:.0f} + "
@@ -388,44 +398,44 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         "множителем 0.01):"
     ).runs[0].font.size = Pt(10)
     _feq(doc, _cat(_sym("N", "р.н"), _n(" = "), _sym("R", "n,н"), _n(" · b · t · 0.01")), italic=True)
-    _feq(doc, _cat(_n(
-        f"N_р.н = {rn_lower:.1f} · {b_mm:.0f} · {t_mm:.1f} · 0.01 = {_fnum(tensile_lower, 1)} кгс"
+    _feq(doc, _cat(_sym("N", "р.н"), _n(
+        f" = {rn_lower:.1f} · {b_mm:.0f} · {t_mm:.1f} · 0.01 = {_fnum(tensile_lower, 1)} кгс"
     )))
     if in_web:
         _feq(doc, _cat(_sym("N", "р.ст"), _n(" = "), _sym("R", "n,ст"),
                        _n(" · s · (h − a − t) · 0.01")), italic=True)
-        _feq(doc, _cat(_n(
-            f"N_р.ст = {rn_web:.1f} · {s_mm:.1f} · ({h_mm:.0f} − {_fnum(a_used)} − {t_mm:.1f}) · 0.01 "
+        _feq(doc, _cat(_sym("N", "р.ст"), _n(
+            f" = {rn_web:.1f} · {s_mm:.1f} · ({h_mm:.0f} − {_fnum(a_used)} − {t_mm:.1f}) · 0.01 "
             f"= {_fnum(tensile_web, 1)} кгс"
         )))
         _feq(doc, _cat(_sym("N", "сж.ст"), _n(" = "), _sym("R", "n,ст"),
                        _n(" · s · (a − t) · 0.01")), italic=True)
-        _feq(doc, _cat(_n(
-            f"N_сж.ст = {rn_web:.1f} · {s_mm:.1f} · ({_fnum(a_used)} − {t_mm:.1f}) · 0.01 "
+        _feq(doc, _cat(_sym("N", "сж.ст"), _n(
+            f" = {rn_web:.1f} · {s_mm:.1f} · ({_fnum(a_used)} − {t_mm:.1f}) · 0.01 "
             f"= {_fnum(compression_web, 1)} кгс"
         )))
         _feq(doc, _cat(_sym("N", "сж.в"), _n(" = "), _sym("R", "n,в"),
                        _n(" · t · b · 0.01")), italic=True)
-        _feq(doc, _cat(_n(
-            f"N_сж.в = {rn_upper:.1f} · {t_mm:.1f} · {b_mm:.0f} · 0.01 = {_fnum(compression_upper, 1)} кгс"
+        _feq(doc, _cat(_sym("N", "сж.в"), _n(
+            f" = {rn_upper:.1f} · {t_mm:.1f} · {b_mm:.0f} · 0.01 = {_fnum(compression_upper, 1)} кгс"
         )))
     else:
         _feq(doc, _cat(_sym("N", "р.ст"), _n(" = "), _sym("R", "n,ст"),
                        _n(" · s · (h − 2t) · 0.01")), italic=True)
-        _feq(doc, _cat(_n(
-            f"N_р.ст = {rn_web:.1f} · {s_mm:.1f} · ({h_mm:.0f} − 2·{t_mm:.1f}) · 0.01 "
+        _feq(doc, _cat(_sym("N", "р.ст"), _n(
+            f" = {rn_web:.1f} · {s_mm:.1f} · ({h_mm:.0f} − 2·{t_mm:.1f}) · 0.01 "
             f"= {_fnum(tensile_web, 1)} кгс"
         )))
         _feq(doc, _cat(_sym("N", "сж.ст"), _n(" = "), _sym("R", "n,в"),
                        _n(" · b · (t − a) · 0.01")), italic=True)
-        _feq(doc, _cat(_n(
-            f"N_сж.ст = {rn_upper:.1f} · {b_mm:.0f} · ({t_mm:.1f} − {_fnum(a_used)}) · 0.01 "
+        _feq(doc, _cat(_sym("N", "сж.ст"), _n(
+            f" = {rn_upper:.1f} · {b_mm:.0f} · ({t_mm:.1f} − {_fnum(a_used)}) · 0.01 "
             f"= {_fnum(compression_web, 1)} кгс"
         )))
         _feq(doc, _cat(_sym("N", "сж.в"), _n(" = "), _sym("R", "n,в"),
                        _n(" · a · b · 0.01")), italic=True)
-        _feq(doc, _cat(_n(
-            f"N_сж.в = {rn_upper:.1f} · {_fnum(a_used)} · {b_mm:.0f} · 0.01 = {_fnum(compression_upper, 1)} кгс"
+        _feq(doc, _cat(_sym("N", "сж.в"), _n(
+            f" = {rn_upper:.1f} · {_fnum(a_used)} · {b_mm:.0f} · 0.01 = {_fnum(compression_upper, 1)} кгс"
         )))
 
     # 5. Плечи
@@ -436,36 +446,36 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
     if in_web:
         _feq(doc, _cat(_n(
             f"h − a − t/2 = {h_mm:.0f} − {_fnum(a_used)} − {t_mm/2:.1f} = "
-            f"{_fnum(arm_tensile_lower)} мм  (плечо N_р.н)"
-        )))
+            f"{_fnum(arm_tensile_lower)} мм  (плечо "
+        ), _sym("N", "р.н"), _n(")")))
         _feq(doc, _cat(_n(
             f"(h − a − t)/2 = ({h_mm:.0f} − {_fnum(a_used)} − {t_mm:.1f})/2 = "
-            f"{_fnum(arm_tensile_web)} мм  (плечо N_р.ст)"
-        )))
+            f"{_fnum(arm_tensile_web)} мм  (плечо "
+        ), _sym("N", "р.ст"), _n(")")))
         _feq(doc, _cat(_n(
             f"(a − t)/2 = ({_fnum(a_used)} − {t_mm:.1f})/2 = "
-            f"{_fnum(arm_compression_web)} мм  (плечо N_сж.ст)"
-        )))
+            f"{_fnum(arm_compression_web)} мм  (плечо "
+        ), _sym("N", "сж.ст"), _n(")")))
         _feq(doc, _cat(_n(
             f"a − t/2 = {_fnum(a_used)} − {t_mm/2:.1f} = "
-            f"{_fnum(arm_compression_upper)} мм  (плечо N_сж.в)"
-        )))
+            f"{_fnum(arm_compression_upper)} мм  (плечо "
+        ), _sym("N", "сж.в"), _n(")")))
     else:
         _feq(doc, _cat(_n(
             f"h − t/2 − a = {h_mm:.0f} − {t_mm/2:.1f} − {_fnum(a_used)} = "
-            f"{_fnum(arm_tensile_lower)} мм  (плечо N_р.н)"
-        )))
+            f"{_fnum(arm_tensile_lower)} мм  (плечо "
+        ), _sym("N", "р.н"), _n(")")))
         _feq(doc, _cat(_n(
             f"h/2 − a = {h_mm/2:.1f} − {_fnum(a_used)} = "
-            f"{_fnum(arm_tensile_web)} мм  (плечо N_р.ст)"
-        )))
+            f"{_fnum(arm_tensile_web)} мм  (плечо "
+        ), _sym("N", "р.ст"), _n(")")))
         _feq(doc, _cat(_n(
             f"(t − a)/2 = ({t_mm:.1f} − {_fnum(a_used)})/2 = "
-            f"{_fnum(arm_compression_web)} мм  (плечо N_сж.ст)"
-        )))
+            f"{_fnum(arm_compression_web)} мм  (плечо "
+        ), _sym("N", "сж.ст"), _n(")")))
         _feq(doc, _cat(_n(
-            f"a/2 = {_fnum(a_used)}/2 = {_fnum(arm_compression_upper)} мм  (плечо N_сж.в)"
-        )))
+            f"a/2 = {_fnum(a_used)}/2 = {_fnum(arm_compression_upper)} мм  (плечо "
+        ), _sym("N", "сж.в"), _n(")")))
 
     # 6. Изгибающие моменты и несущая способность
     doc.add_heading(f"{section_no}.6. Изгибающие моменты и несущая способность", level=2)
@@ -473,23 +483,25 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         "Момент от каждого усилия — произведение усилия (кгс) на его плечо (мм); "
         "множитель 0.00001 переводит кгс·мм в кН·м (g ≈ 10 м/с²):"
     ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_n(
-        f"M_р.н = {_fnum(tensile_lower, 1)} · {_fnum(arm_tensile_lower)} · 0.00001 "
+    _feq(doc, _cat(_sym("M", "р.н"), _n(
+        f" = {_fnum(tensile_lower, 1)} · {_fnum(arm_tensile_lower)} · 0.00001 "
         f"= {_fnum(moment_lower, 3)} кНм"
     )))
-    _feq(doc, _cat(_n(
-        f"M_р.ст = {_fnum(tensile_web, 1)} · {_fnum(arm_tensile_web)} · 0.00001 "
+    _feq(doc, _cat(_sym("M", "р.ст"), _n(
+        f" = {_fnum(tensile_web, 1)} · {_fnum(arm_tensile_web)} · 0.00001 "
         f"= {_fnum(moment_web, 3)} кНм"
     )))
-    _feq(doc, _cat(_n(
-        f"M_сж.ст = {_fnum(compression_web, 1)} · {_fnum(arm_compression_web)} · 0.00001 "
+    _feq(doc, _cat(_sym("M", "сж.ст"), _n(
+        f" = {_fnum(compression_web, 1)} · {_fnum(arm_compression_web)} · 0.00001 "
         f"= {_fnum(moment_upper_web, 3)} кНм"
     )))
-    _feq(doc, _cat(_n(
-        f"M_сж.в = {_fnum(compression_upper, 1)} · {_fnum(arm_compression_upper)} · 0.00001 "
+    _feq(doc, _cat(_sym("M", "сж.в"), _n(
+        f" = {_fnum(compression_upper, 1)} · {_fnum(arm_compression_upper)} · 0.00001 "
         f"= {_fnum(moment_upper, 3)} кНм"
     )))
-    _feq(doc, _cat(_sym("M", "нес"), _n(" = M_р.н + M_р.ст + M_сж.ст + M_сж.в = "),
+    _feq(doc, _cat(_sym("M", "нес"), _n(" = "),
+                   _sym("M", "р.н"), _n(" + "), _sym("M", "р.ст"), _n(" + "),
+                   _sym("M", "сж.ст"), _n(" + "), _sym("M", "сж.в"), _n(" = "),
                    _n(f"{_fnum(moment_lower,3)} + {_fnum(moment_web,3)} + "
                       f"{_fnum(moment_upper_web,3)} + {_fnum(moment_upper,3)} = "
                       f"{_fnum(cap_t, 2)} кНм")))
@@ -500,26 +512,28 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         "Момент в середине пролёта от сосредоточенной нагрузки P и от собственного "
         "веса балки q = m·g (не зависит от времени пожара):"
     ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_sym("M", "нагр"), _n(" = (P·L/4) · 9.80665·10")), italic=True)
+    _feq(doc, _cat(_sym("M", "нагр"),
+                   _n(" = (P·L/4)·9.80665·10⁻³ + (q·L²/8)·0.01")), italic=True)
     if m_kgm is not None:
         term1 = (load_kg * length_m / 4) * 9.80665e-3
         term2 = (m_kgm * length_m ** 2 / 8) * 0.01
-        _feq(doc, _cat(_n(
-            f"M_нагр = ({load_kg:.1f}·{length_m:.2f}/4)·9.80665·10⁻³ + "
+        _feq(doc, _cat(_sym("M", "нагр"), _n(
+            f" = ({load_kg:.1f}·{length_m:.2f}/4)·9.80665·10⁻³ + "
             f"({m_kgm:.1f}·{length_m:.2f}²/8)·0.01 = {term1:.3f} + {term2:.3f} "
             f"= {mom_val:.3f} кНм"
         )))
     else:
-        _feq(doc, _cat(_n(f"M_нагр = {mom_val:.3f} кНм")))
+        _feq(doc, _cat(_sym("M", "нагр"), _n(f" = {mom_val:.3f} кНм")))
 
     # 8. Предел огнестойкости
     doc.add_heading(f"{section_no}.8. Предел огнестойкости", level=2)
-    doc.add_paragraph(
-        f"Предел огнестойкости — последняя целая минута, для которой Mнес(t) ещё "
-        f"превышает Mнагр = {mom_val:.3f} кНм. На {demo}-й минуте Mнес = "
-        f"{_fnum(cap_t, 2)} кНм. Полная динамика по всем минутам — в таблице "
-        f"«Несущая способность и момент от нагрузки» ниже."
-    ).runs[0].font.size = Pt(10)
+    _mixed_paragraph(doc, _cat(
+        _n("Предел огнестойкости — последняя целая минута, для которой "),
+        _sym("M", "нес"), _n("(t) ещё превышает "), _sym("M", "нагр"),
+        _n(f" = {mom_val:.3f} кНм. На {demo}-й минуте "), _sym("M", "нес"),
+        _n(f" = {_fnum(cap_t, 2)} кНм. Полная динамика по всем минутам — в таблице "
+           f"«Несущая способность и момент от нагрузки» ниже."),
+    ))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
