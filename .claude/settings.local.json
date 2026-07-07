@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version; \\(Get-Command python\\).Source; python -m pip --version)",
+      "PowerShell(py *)",
+      "PowerShell(uv *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(uv pip *)",
+      "PowerShell($env:PYTHONIOENCODING='utf-8'; .venv\\\\Scripts\\\\python.exe .claude\\\\skills\\\\run-steel\\\\driver.py smoke main1.py --load 2000 --length 6)",
+      "PowerShell($env:PYTHONIOENCODING='utf-8'; .venv\\\\Scripts\\\\python.exe .claude\\\\skills\\\\run-steel\\\\driver.py screenshot main1.py --out .claude\\\\skills\\\\run-steel\\\\app_screenshot.png)",
+      "PowerShell($env:PYTHONIOENCODING='utf-8'; .venv\\\\Scripts\\\\python.exe .claude\\\\skills\\\\run-steel\\\\driver.py smoke 2>$null | Select-Object -Last 6; \"exit=$LASTEXITCODE\")",
+      "PowerShell($env:PYTHONIOENCODING='utf-8'; .venv\\\\Scripts\\\\python.exe _compare_bug.py)",
+      "PowerShell($env:PYTHONIOENCODING='utf-8'; .venv\\\\Scripts\\\\python.exe .claude\\\\skills\\\\run-steel\\\\driver.py smoke main.py --doc \"ГОСТ 26020-83\" --profile \"20Б1\" --grade \"С345\" --load 2000 --length 6 2>$null; \"exit=$LASTEXITCODE\")",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m streamlit run main.py --server.port 8501 --server.headless true --browser.gatherUsageStats false)",
+      "PowerShell($env:PYTHONIOENCODING='utf-8'; .venv\\\\Scripts\\\\python.exe find_el.py 2>&1)",
+      "Bash($env:PYTHONIOENCODING='utf-8':*)",
+      "Bash(PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe:*)",
+      "Bash(py:*)",
+      "Bash(/c/Python314/python:*)",
+      "Bash(rm:*)",
+      "Bash(python:*)",
+      "Bash(PYTHONIOENCODING=utf-8 .venv/Scripts/python exe:*)",
+      "Bash(where uv:*)",
+      "Bash(.venv/Scripts/pip.exe install:*)"
+    ]
+  }
+}
