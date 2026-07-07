@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Интерфейс (Streamlit). Вся математика — в calc.py."""
 import math
+import os
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,12 +9,46 @@ import streamlit as st
 
 from calc import SteelDatabase, FireCalcResult, compute
 
+_OGZ_EXCEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "температура с ОГЗ.xlsx")
+
 st.set_page_config(page_title="Огнестойкость стальных балок", layout="wide")
 
 
 @st.cache_resource
 def load_db() -> SteelDatabase:
     return SteelDatabase.from_dir()
+
+
+@st.cache_resource
+def load_ogz_data() -> dict:
+    """Загружает температуры с ОГЗ из Excel-файла.
+
+    Возвращает словарь {имя_листа: {'lower': array, 'web': array, 'upper': array}}
+    с поминутными значениями (0..150 мин включительно).
+    Если файл не найден — пустой словарь.
+    """
+    if not os.path.exists(_OGZ_EXCEL):
+        return {}
+    try:
+        xl = pd.ExcelFile(_OGZ_EXCEL)
+    except Exception:
+        return {}
+
+    minutes = np.arange(0, 151, dtype=float)
+    result = {}
+    for sheet in xl.sheet_names:
+        df = xl.parse(sheet, header=0)
+        time_s = df.iloc[:, 0].astype(float).values
+        upper  = df.iloc[:, 1].astype(float).values
+        web    = df.iloc[:, 2].astype(float).values
+        lower  = df.iloc[:, 3].astype(float).values
+        time_min = time_s / 60.0
+        result[sheet] = {
+            "lower": np.interp(minutes, time_min, lower),
+            "web":   np.interp(minutes, time_min, web),
+            "upper": np.interp(minutes, time_min, upper),
+        }
+    return result
 
 
 def make_chart(res: FireCalcResult) -> go.Figure:
@@ -401,13 +436,25 @@ def main():
             st.info("Задайте нагрузку и длину — иначе учитывается только собственный вес балки.")
 
         st.markdown("##### 4. Температуры сечения")
+        _ogz_data = load_ogz_data()
+        _ogz_options = [f"ОГЗ: {s}" for s in _ogz_data.keys()]
+        _temp_source_options = ["Встроенные данные (без ОГЗ)"] + _ogz_options + ["Загрузить CSV", "Ввести вручную"]
         temp_source = st.radio(
             "Источник температур",
-            ["Встроенные данные", "Загрузить CSV", "Ввести вручную"],
+            _temp_source_options,
             label_visibility="collapsed",
         )
 
         _temp_lower_ext = _temp_web_ext = _temp_upper_ext = None
+
+        # Загрузка данных из Excel (ОГЗ)
+        if temp_source.startswith("ОГЗ: "):
+            _sheet = temp_source[len("ОГЗ: "):]
+            _ogz = _ogz_data[_sheet]
+            _temp_lower_ext = _ogz["lower"]
+            _temp_web_ext   = _ogz["web"]
+            _temp_upper_ext = _ogz["upper"]
+            st.caption(f"Загружено {len(_temp_lower_ext)} мин (0–{len(_temp_lower_ext)-1} мин)")
 
         if temp_source == "Загрузить CSV":
             tmpl_df = _default_temp_df(db)
