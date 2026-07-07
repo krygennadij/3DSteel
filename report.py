@@ -24,7 +24,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Inches, Pt, RGBColor
 
-from calc import FireCalcResult
+from calc import FireCalcResult, MPA_TO_KGF_CM2
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -199,6 +199,329 @@ def _result_box(doc: Document, label: str, value: str,
     _cell_text(tbl.rows[0].cells[1], value, size_pt=10, align="center")
 
 
+# ── Формулы с подстрочными индексами ────────────────────────────────────────
+
+def _n(text: str) -> list:
+    return [(text, False)]
+
+
+def _s(text: str) -> list:
+    return [(text, True)]
+
+
+def _sym(base: str, sub: str = "") -> list:
+    return [(base, False), (sub, True)] if sub else [(base, False)]
+
+
+def _cat(*parts) -> list:
+    out = []
+    for part in parts:
+        out.extend(part)
+    return out
+
+
+def _feq(doc: Document, tokens: list, size: int = 11, align: str = "center",
+         italic: bool = False) -> None:
+    """Строка-формула из токенов (текст, признак_подстрочного_начертания)."""
+    p = doc.add_paragraph()
+    p.alignment = {
+        "left":   WD_ALIGN_PARAGRAPH.LEFT,
+        "center": WD_ALIGN_PARAGRAPH.CENTER,
+    }.get(align, WD_ALIGN_PARAGRAPH.CENTER)
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(6)
+    for text, is_sub in tokens:
+        run = p.add_run(text)
+        run.font.size = Pt(size)
+        run.italic = italic
+        if is_sub:
+            run.font.subscript = True
+
+
+def _fnum(v, nd: int = 2) -> str:
+    if v is None or (isinstance(v, (float, np.floating)) and not np.isfinite(v)):
+        return "—"
+    return f"{v:.{nd}f}"
+
+
+def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult,
+                             b_mm: float, h_mm: float, t_mm: float, s_mm: float,
+                             m_kgm: float, load_kg: float, length_m: float) -> None:
+    """Раздел с формулами методики и численной подстановкой для одной
+    показательной минуты пожара."""
+
+    n_last = len(res.load_capacity) - 1
+    limit = res.fire_limit_minute
+    if limit is not None and limit > 0:
+        demo = limit
+        demo_note = f"момент наступления предела огнестойкости"
+    elif limit == 0:
+        demo = 0
+        demo_note = "начальный момент времени (предел огнестойкости не достигается позже)"
+    else:
+        demo = min(15, n_last)
+        demo_note = "иллюстративный момент времени"
+
+    st_row   = res.strength_table.iloc[demo]
+    zone_row = res.compressed_zone.iloc[demo]
+    rn_row   = res.normative_resistance.iloc[demo]
+    arm_row  = res.lever_arms.iloc[demo]
+    mo_row   = res.bending_moments.iloc[demo]
+    cap_t    = res.load_capacity["Несущая способность, кНм"].iloc[demo]
+    mom_val  = res.applied_moment_value
+
+    yld_lower_0 = res.strength_table["Предел текучести нижней полки"].iloc[0]
+    yld_web_0   = res.strength_table["Предел текучести стенки"].iloc[0]
+    yld_upper_0 = res.strength_table["Предел текучести верхней полки"].iloc[0]
+
+    temp_lower = st_row["Температура нижней полки, ℃"]
+    yld_lower  = st_row["Предел текучести нижней полки"]
+    k_lower    = st_row["Коэффициент снижения предела текучести нижней полки"]
+    temp_web   = st_row["Температура стенки, ℃"]
+    yld_web    = st_row["Предел текучести стенки"]
+    k_web      = st_row["Коэффициент снижения предела текучести стенки"]
+    temp_upper = st_row["Температура верхней полки, ℃"]
+    yld_upper  = st_row["Предел текучести верхней полки"]
+    k_upper    = st_row["Коэффициент снижения предела текучести верхней полки"]
+
+    a_flange = zone_row["Показатель сжатой зоны при x < a"]
+    a_web    = zone_row["Показатель сжатой зоны при x > a"]
+    in_web   = bool(np.isfinite(a_flange) and a_flange > t_mm)
+    a_used   = a_web if in_web else a_flange
+
+    rn_lower = rn_row["Нормативное сопротивление нижней полки, кгс/см²"]
+    rn_web   = rn_row["Нормативное сопротивление стенки, кгс/см²"]
+    rn_upper = rn_row["Нормативное сопротивление верхней полки, кгс/см²"]
+
+    arm_tensile_lower     = arm_row["Плечо равнодействующей силы растяжения в нижней полке, мм"]
+    arm_tensile_web       = arm_row["Плечо равнодействующей силы растяжения в нижней части стенки, мм"]
+    arm_compression_web   = arm_row["Плечо равнодействующей силы сжатия в верхней части стенки, мм"]
+    arm_compression_upper = arm_row["Плечо равнодействующей силы сжатия в верхней полке, мм"]
+
+    moment_lower     = mo_row["Изгибающий момент в нижней полке, кНм"]
+    moment_web       = mo_row["Изгибающий момент в нижней части стенки, кНм"]
+    moment_upper_web = mo_row["Изгибающий момент в верхней части стенки, кНм"]
+    moment_upper     = mo_row["Изгибающий момент в верхней полке, кНм"]
+
+    tensile_lower     = rn_lower * b_mm * t_mm * 0.01
+    if in_web:
+        tensile_web       = rn_web * s_mm * (h_mm - a_used - t_mm) * 0.01
+        compression_web   = rn_web * s_mm * (a_used - t_mm) * 0.01
+        compression_upper = rn_upper * t_mm * b_mm * 0.01
+    else:
+        tensile_web       = rn_web * s_mm * (h_mm - 2 * t_mm) * 0.01
+        compression_web   = rn_upper * b_mm * (t_mm - a_used) * 0.01
+        compression_upper = rn_upper * a_used * b_mm * 0.01
+
+    doc.add_heading(f"{section_no}. Методика расчёта: пример с численной подстановкой", level=1)
+    doc.add_paragraph(
+        f"Ниже показан порядок расчёта, заложенный в программу, с подстановкой "
+        f"реальных чисел для сечения b×h×t×s = {b_mm:.0f}×{h_mm:.0f}×{t_mm:.1f}×{s_mm:.1f} мм "
+        f"— {demo_note} (t = {demo} мин). Расчёт для остальных минут выполняется по тем же "
+        f"формулам; полные результаты — в таблицах ниже."
+    ).runs[0].font.size = Pt(10)
+
+    # 1. Снижение прочности стали
+    doc.add_heading(f"{section_no}.1. Снижение прочности стали при нагреве", level=2)
+    doc.add_paragraph(
+        "Коэффициент снижения предела текучести каждого участка сечения — отношение "
+        "предела текучести стали при текущей температуре к пределу текучести при 20 °C:"
+    ).runs[0].font.size = Pt(10)
+    _feq(doc, _cat(_sym("k", "x"), _n(" = R"), _sym("y", "x"), _n("(t)  /  R"),
+                   _sym("y", "x"), _n("(20 °C)")), italic=True)
+    doc.add_paragraph(
+        f"При t = {demo} мин температуры участков: нижняя полка — {temp_lower:.0f} °C, "
+        f"стенка — {temp_web:.0f} °C, верхняя полка — {temp_upper:.0f} °C."
+    ).runs[0].font.size = Pt(10)
+    _feq(doc, _cat(_sym("k", "н"),  _n(f" = {yld_lower:.1f} / {yld_lower_0:.1f} = {k_lower:.3f}")))
+    _feq(doc, _cat(_sym("k", "ст"), _n(f" = {yld_web:.1f} / {yld_web_0:.1f} = {k_web:.3f}")))
+    _feq(doc, _cat(_sym("k", "в"),  _n(f" = {yld_upper:.1f} / {yld_upper_0:.1f} = {k_upper:.3f}")))
+
+    # 2. Нормативное сопротивление
+    doc.add_heading(f"{section_no}.2. Нормативное сопротивление стали", level=2)
+    _feq(doc, _cat(_sym("R", "n,x"), _n(" = "), _sym("k", "x"), _n(" · R"),
+                   _sym("y", "x"), _n("(20 °C) · 10.197")), italic=True)
+    _feq(doc, _cat(_sym("R", "n,н"),
+                   _n(f" = {k_lower:.3f} · {yld_lower_0:.1f} · 10.197 = {rn_lower:.1f} кгс/см²")))
+    _feq(doc, _cat(_sym("R", "n,ст"),
+                   _n(f" = {k_web:.3f} · {yld_web_0:.1f} · 10.197 = {rn_web:.1f} кгс/см²")))
+    _feq(doc, _cat(_sym("R", "n,в"),
+                   _n(f" = {k_upper:.3f} · {yld_upper_0:.1f} · 10.197 = {rn_upper:.1f} кгс/см²")))
+
+    # 3. Положение нейтральной оси
+    doc.add_heading(f"{section_no}.3. Положение нейтральной оси", level=2)
+    doc.add_paragraph(
+        "Сначала проверяется, укладывается ли граница сжатой зоны в толщину полки (x ≤ t):"
+    ).runs[0].font.size = Pt(10)
+    _feq(doc, _cat(_n("a = ("), _sym("k", "в"), _n("·b·t + "), _sym("k", "ст"),
+                   _n("·s·h − 2"), _sym("k", "ст"), _n("·s·t + "), _sym("k", "н"),
+                   _n("·b·t)  /  (2"), _sym("k", "в"), _n("·b)")), italic=True)
+    _feq(doc, _cat(_n(
+        f"a = ({k_upper:.3f}·{b_mm:.0f}·{t_mm:.1f} + {k_web:.3f}·{s_mm:.1f}·{h_mm:.0f} − "
+        f"2·{k_web:.3f}·{s_mm:.1f}·{t_mm:.1f} + {k_lower:.3f}·{b_mm:.0f}·{t_mm:.1f}) / "
+        f"(2·{k_upper:.3f}·{b_mm:.0f}) = {_fnum(a_flange)} мм"
+    )))
+    if in_web:
+        doc.add_paragraph(
+            f"Так как a = {_fnum(a_flange)} мм > t = {t_mm:.1f} мм, нейтральная ось лежит "
+            f"в стенке — показатель сжатой зоны пересчитывается по формуле для стенки:"
+        ).runs[0].font.size = Pt(10)
+        _feq(doc, _cat(_n("a = ("), _sym("k", "ст"), _n("·h·s − "), _sym("k", "в"),
+                       _n("·t·b + "), _sym("k", "н"), _n("·t·b)  /  (2"), _sym("k", "ст"),
+                       _n("·s)")), italic=True)
+        _feq(doc, _cat(_n(
+            f"a = ({k_web:.3f}·{h_mm:.0f}·{s_mm:.1f} − {k_upper:.3f}·{t_mm:.1f}·{b_mm:.0f} + "
+            f"{k_lower:.3f}·{t_mm:.1f}·{b_mm:.0f}) / (2·{k_web:.3f}·{s_mm:.1f}) = {_fnum(a_web)} мм"
+        )))
+    else:
+        doc.add_paragraph(
+            f"Так как a = {_fnum(a_flange)} мм ≤ t = {t_mm:.1f} мм, нейтральная ось лежит "
+            f"в пределах полки — показатель сжатой зоны a = {_fnum(a_flange)} мм принимается "
+            f"без пересчёта."
+        ).runs[0].font.size = Pt(10)
+
+    # 4. Усилия
+    doc.add_heading(f"{section_no}.4. Усилия растяжения и сжатия", level=2)
+    doc.add_paragraph(
+        "Каждое усилие — произведение нормативного сопротивления участка на его "
+        "площадь в сжатой/растянутой зоне (площадь в мм² переводится в см² "
+        "множителем 0.01):"
+    ).runs[0].font.size = Pt(10)
+    _feq(doc, _cat(_sym("N", "р.н"), _n(" = "), _sym("R", "n,н"), _n(" · b · t · 0.01")), italic=True)
+    _feq(doc, _cat(_n(
+        f"N_р.н = {rn_lower:.1f} · {b_mm:.0f} · {t_mm:.1f} · 0.01 = {_fnum(tensile_lower, 1)} кгс"
+    )))
+    if in_web:
+        _feq(doc, _cat(_sym("N", "р.ст"), _n(" = "), _sym("R", "n,ст"),
+                       _n(" · s · (h − a − t) · 0.01")), italic=True)
+        _feq(doc, _cat(_n(
+            f"N_р.ст = {rn_web:.1f} · {s_mm:.1f} · ({h_mm:.0f} − {_fnum(a_used)} − {t_mm:.1f}) · 0.01 "
+            f"= {_fnum(tensile_web, 1)} кгс"
+        )))
+        _feq(doc, _cat(_sym("N", "сж.ст"), _n(" = "), _sym("R", "n,ст"),
+                       _n(" · s · (a − t) · 0.01")), italic=True)
+        _feq(doc, _cat(_n(
+            f"N_сж.ст = {rn_web:.1f} · {s_mm:.1f} · ({_fnum(a_used)} − {t_mm:.1f}) · 0.01 "
+            f"= {_fnum(compression_web, 1)} кгс"
+        )))
+        _feq(doc, _cat(_sym("N", "сж.в"), _n(" = "), _sym("R", "n,в"),
+                       _n(" · t · b · 0.01")), italic=True)
+        _feq(doc, _cat(_n(
+            f"N_сж.в = {rn_upper:.1f} · {t_mm:.1f} · {b_mm:.0f} · 0.01 = {_fnum(compression_upper, 1)} кгс"
+        )))
+    else:
+        _feq(doc, _cat(_sym("N", "р.ст"), _n(" = "), _sym("R", "n,ст"),
+                       _n(" · s · (h − 2t) · 0.01")), italic=True)
+        _feq(doc, _cat(_n(
+            f"N_р.ст = {rn_web:.1f} · {s_mm:.1f} · ({h_mm:.0f} − 2·{t_mm:.1f}) · 0.01 "
+            f"= {_fnum(tensile_web, 1)} кгс"
+        )))
+        _feq(doc, _cat(_sym("N", "сж.ст"), _n(" = "), _sym("R", "n,в"),
+                       _n(" · b · (t − a) · 0.01")), italic=True)
+        _feq(doc, _cat(_n(
+            f"N_сж.ст = {rn_upper:.1f} · {b_mm:.0f} · ({t_mm:.1f} − {_fnum(a_used)}) · 0.01 "
+            f"= {_fnum(compression_web, 1)} кгс"
+        )))
+        _feq(doc, _cat(_sym("N", "сж.в"), _n(" = "), _sym("R", "n,в"),
+                       _n(" · a · b · 0.01")), italic=True)
+        _feq(doc, _cat(_n(
+            f"N_сж.в = {rn_upper:.1f} · {_fnum(a_used)} · {b_mm:.0f} · 0.01 = {_fnum(compression_upper, 1)} кгс"
+        )))
+
+    # 5. Плечи
+    doc.add_heading(f"{section_no}.5. Плечи равнодействующих сил", level=2)
+    doc.add_paragraph(
+        "Плечи измеряются от найденной нейтральной оси до центра тяжести каждой зоны:"
+    ).runs[0].font.size = Pt(10)
+    if in_web:
+        _feq(doc, _cat(_n(
+            f"h − a − t/2 = {h_mm:.0f} − {_fnum(a_used)} − {t_mm/2:.1f} = "
+            f"{_fnum(arm_tensile_lower)} мм  (плечо N_р.н)"
+        )))
+        _feq(doc, _cat(_n(
+            f"(h − a − t)/2 = ({h_mm:.0f} − {_fnum(a_used)} − {t_mm:.1f})/2 = "
+            f"{_fnum(arm_tensile_web)} мм  (плечо N_р.ст)"
+        )))
+        _feq(doc, _cat(_n(
+            f"(a − t)/2 = ({_fnum(a_used)} − {t_mm:.1f})/2 = "
+            f"{_fnum(arm_compression_web)} мм  (плечо N_сж.ст)"
+        )))
+        _feq(doc, _cat(_n(
+            f"a − t/2 = {_fnum(a_used)} − {t_mm/2:.1f} = "
+            f"{_fnum(arm_compression_upper)} мм  (плечо N_сж.в)"
+        )))
+    else:
+        _feq(doc, _cat(_n(
+            f"h − t/2 − a = {h_mm:.0f} − {t_mm/2:.1f} − {_fnum(a_used)} = "
+            f"{_fnum(arm_tensile_lower)} мм  (плечо N_р.н)"
+        )))
+        _feq(doc, _cat(_n(
+            f"h/2 − a = {h_mm/2:.1f} − {_fnum(a_used)} = "
+            f"{_fnum(arm_tensile_web)} мм  (плечо N_р.ст)"
+        )))
+        _feq(doc, _cat(_n(
+            f"(t − a)/2 = ({t_mm:.1f} − {_fnum(a_used)})/2 = "
+            f"{_fnum(arm_compression_web)} мм  (плечо N_сж.ст)"
+        )))
+        _feq(doc, _cat(_n(
+            f"a/2 = {_fnum(a_used)}/2 = {_fnum(arm_compression_upper)} мм  (плечо N_сж.в)"
+        )))
+
+    # 6. Изгибающие моменты и несущая способность
+    doc.add_heading(f"{section_no}.6. Изгибающие моменты и несущая способность", level=2)
+    doc.add_paragraph(
+        "Момент от каждого усилия — произведение усилия (кгс) на его плечо (мм); "
+        "множитель 0.00001 переводит кгс·мм в кН·м (g ≈ 10 м/с²):"
+    ).runs[0].font.size = Pt(10)
+    _feq(doc, _cat(_n(
+        f"M_р.н = {_fnum(tensile_lower, 1)} · {_fnum(arm_tensile_lower)} · 0.00001 "
+        f"= {_fnum(moment_lower, 3)} кНм"
+    )))
+    _feq(doc, _cat(_n(
+        f"M_р.ст = {_fnum(tensile_web, 1)} · {_fnum(arm_tensile_web)} · 0.00001 "
+        f"= {_fnum(moment_web, 3)} кНм"
+    )))
+    _feq(doc, _cat(_n(
+        f"M_сж.ст = {_fnum(compression_web, 1)} · {_fnum(arm_compression_web)} · 0.00001 "
+        f"= {_fnum(moment_upper_web, 3)} кНм"
+    )))
+    _feq(doc, _cat(_n(
+        f"M_сж.в = {_fnum(compression_upper, 1)} · {_fnum(arm_compression_upper)} · 0.00001 "
+        f"= {_fnum(moment_upper, 3)} кНм"
+    )))
+    _feq(doc, _cat(_sym("M", "нес"), _n(" = M_р.н + M_р.ст + M_сж.ст + M_сж.в = "),
+                   _n(f"{_fnum(moment_lower,3)} + {_fnum(moment_web,3)} + "
+                      f"{_fnum(moment_upper_web,3)} + {_fnum(moment_upper,3)} = "
+                      f"{_fnum(cap_t, 2)} кНм")))
+
+    # 7. Момент от нагрузки
+    doc.add_heading(f"{section_no}.7. Момент от нагрузки", level=2)
+    doc.add_paragraph(
+        "Момент в середине пролёта от сосредоточенной нагрузки P и от собственного "
+        "веса балки q = m·g (не зависит от времени пожара):"
+    ).runs[0].font.size = Pt(10)
+    _feq(doc, _cat(_sym("M", "нагр"), _n(" = (P·L/4) · 9.80665·10")), italic=True)
+    if m_kgm is not None:
+        term1 = (load_kg * length_m / 4) * 9.80665e-3
+        term2 = (m_kgm * length_m ** 2 / 8) * 0.01
+        _feq(doc, _cat(_n(
+            f"M_нагр = ({load_kg:.1f}·{length_m:.2f}/4)·9.80665·10⁻³ + "
+            f"({m_kgm:.1f}·{length_m:.2f}²/8)·0.01 = {term1:.3f} + {term2:.3f} "
+            f"= {mom_val:.3f} кНм"
+        )))
+    else:
+        _feq(doc, _cat(_n(f"M_нагр = {mom_val:.3f} кНм")))
+
+    # 8. Предел огнестойкости
+    doc.add_heading(f"{section_no}.8. Предел огнестойкости", level=2)
+    doc.add_paragraph(
+        f"Предел огнестойкости — последняя целая минута, для которой Mнес(t) ещё "
+        f"превышает Mнагр = {mom_val:.3f} кНм. На {demo}-й минуте Mнес = "
+        f"{_fnum(cap_t, 2)} кНм. Полная динамика по всем минутам — в таблице "
+        f"«Несущая способность и момент от нагрузки» ниже."
+    ).runs[0].font.size = Pt(10)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Генерация Word-отчёта
 # ═══════════════════════════════════════════════════════════════════════════
@@ -344,8 +667,9 @@ def make_word_report(
     doc.add_paragraph()
 
     # ── 4. Схема сечения ─────────────────────────────────────────────────────
+    _section_num = 4
     if b_mm is not None:
-        doc.add_heading("4. Схема поперечного сечения", level=1)
+        doc.add_heading(f"{_section_num}. Схема поперечного сечения", level=1)
         hs_set = heated_sides if heated_sides is not None else {"bottom", "left", "right"}
         sec_bytes = _section_png(b_mm, h_mm, t_mm, s_mm, hs_set)
         doc.add_picture(io.BytesIO(sec_bytes), width=Inches(3.0))
@@ -362,16 +686,24 @@ def make_word_report(
         sec_note.runs[0].font.size = Pt(9)
         sec_note.runs[0].italic = True
         doc.add_paragraph()
+        _section_num += 1
 
-    # ── 5. Параметры огнезащиты ──────────────────────────────────────────────
-    _section_num = 5 if b_mm is not None else 4
+    # ── Методика расчёта с численной подстановкой ────────────────────────────
+    if b_mm is not None:
+        _add_methodology_section(doc, _section_num, res,
+                                 b_mm, h_mm, t_mm, s_mm, m_kgm,
+                                 load_kg, length_m)
+        doc.add_paragraph()
+        _section_num += 1
+
+    # ── Параметры огнезащиты ──────────────────────────────────────────────
     if geom_df is not None:
         doc.add_heading(f"{_section_num}. Параметры огнезащиты", level=1)
         _add_df_table(doc, geom_df)
         doc.add_paragraph()
         _section_num += 1
 
-    # ── 6. Подробные таблицы расчёта ─────────────────────────────────────────
+    # ── Подробные таблицы расчёта ─────────────────────────────────────────
     doc.add_heading(f"{_section_num}. Подробные таблицы расчёта", level=1)
     doc.add_paragraph(
         "Расчёт ведётся пошагово для каждой минуты: температуры трёх участков сечения → "
