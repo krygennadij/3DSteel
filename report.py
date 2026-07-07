@@ -50,9 +50,16 @@ def _capacity_chart_png(res: FireCalcResult, dpi: int = 150) -> bytes:
 
     if limit is not None and limit > 0 and limit < len(t_arr):
         ax.axvline(limit, color="black", linewidth=1.0, linestyle=":")
-        ax.text(limit + 0.3, y_max * 0.97,
+        x_right = float(t_arr[-1])
+        # Подпись у линии предела: слева/справа от неё, чтобы не залезать
+        # в легенду (закреплённую в верхнем правом углу)
+        if limit > 0.6 * x_right:
+            label_x, ha = limit - 0.3, "right"
+        else:
+            label_x, ha = limit + 0.3, "left"
+        ax.text(label_x, y_max * 0.55,
                 f"tпред = {limit} мин",
-                fontsize=10, va="top",
+                fontsize=10, va="top", ha=ha,
                 bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none"))
 
     ax.set_xlim(left=0, right=float(t_arr[-1]))
