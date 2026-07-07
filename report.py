@@ -2,6 +2,7 @@
 """Генерация отчётов: Word (.docx) и Excel (.xlsx) с нативными графиками."""
 import io
 import math
+import re
 
 import matplotlib
 matplotlib.use("Agg")
@@ -146,7 +147,7 @@ def _cell_text(cell, text: str, bold=False, size_pt=8,
                color_hex: str = None, align="center") -> None:
     p = cell.paragraphs[0]
     p.clear()
-    run = p.add_run(str(text))
+    run = p.add_run(_ru(str(text)))
     run.bold = bold
     run.font.size = Pt(size_pt)
     if color_hex:
@@ -203,8 +204,16 @@ def _result_box(doc: Document, label: str, value: str,
 
 # ── Формулы с подстрочными индексами ────────────────────────────────────────
 
+_DECIMAL_RE = re.compile(r"(?<=\d)\.(?=\d)")
+
+
+def _ru(text: str) -> str:
+    """Заменяет десятичную точку на запятую (принятый в РФ разделитель)."""
+    return _DECIMAL_RE.sub(",", text)
+
+
 def _n(text: str) -> list:
-    return [(text, False)]
+    return [(_ru(text), False)]
 
 
 def _s(text: str) -> list:
@@ -253,7 +262,7 @@ def _mixed_paragraph(doc: Document, tokens: list, size: int = 10) -> None:
 def _fnum(v, nd: int = 2) -> str:
     if v is None or (isinstance(v, (float, np.floating)) and not np.isfinite(v)):
         return "—"
-    return f"{v:.{nd}f}"
+    return _ru(f"{v:.{nd}f}")
 
 
 def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult,
@@ -326,12 +335,12 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         compression_upper = rn_upper * a_used * b_mm * 0.01
 
     doc.add_heading(f"{section_no}. Методика расчёта: пример с численной подстановкой", level=1)
-    doc.add_paragraph(
+    doc.add_paragraph(_ru(
         f"Ниже показан порядок расчёта, заложенный в программу, с подстановкой "
         f"реальных чисел для сечения b×h×t×s = {b_mm:.0f}×{h_mm:.0f}×{t_mm:.1f}×{s_mm:.1f} мм "
         f"— {demo_note} (t = {demo} мин). Расчёт для остальных минут выполняется по тем же "
         f"формулам; полные результаты — в таблицах ниже."
-    ).runs[0].font.size = Pt(10)
+    )).runs[0].font.size = Pt(10)
 
     # 1. Снижение прочности стали
     doc.add_heading(f"{section_no}.1. Снижение прочности стали при нагреве", level=2)
@@ -374,10 +383,10 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         f"(2·{k_upper:.3f}·{b_mm:.0f}) = {_fnum(a_flange)} мм"
     )))
     if in_web:
-        doc.add_paragraph(
+        doc.add_paragraph(_ru(
             f"Так как a = {_fnum(a_flange)} мм > t = {t_mm:.1f} мм, нейтральная ось лежит "
             f"в стенке — показатель сжатой зоны пересчитывается по формуле для стенки:"
-        ).runs[0].font.size = Pt(10)
+        )).runs[0].font.size = Pt(10)
         _feq(doc, _cat(_n("a = ("), _sym("γ", "ст"), _n("·h·s − "), _sym("γ", "в"),
                        _n("·t·b + "), _sym("γ", "н"), _n("·t·b)  /  (2"), _sym("γ", "ст"),
                        _n("·s)")), italic=True)
@@ -386,18 +395,18 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
             f"{k_lower:.3f}·{t_mm:.1f}·{b_mm:.0f}) / (2·{k_web:.3f}·{s_mm:.1f}) = {_fnum(a_web)} мм"
         )))
     else:
-        doc.add_paragraph(
+        doc.add_paragraph(_ru(
             f"Так как a = {_fnum(a_flange)} мм ≤ t = {t_mm:.1f} мм, нейтральная ось лежит "
             f"в пределах полки — показатель сжатой зоны a = {_fnum(a_flange)} мм принимается "
             f"без пересчёта."
-        ).runs[0].font.size = Pt(10)
+        )).runs[0].font.size = Pt(10)
 
     # 4. Усилия
     doc.add_heading(f"{section_no}.4. Усилия растяжения и сжатия", level=2)
     doc.add_paragraph(
         "Каждое усилие — произведение нормативного сопротивления участка на его "
         "площадь в сжатой/растянутой зоне (площадь в мм² переводится в см² "
-        "множителем 0.01):"
+        "множителем 0,01):"
     ).runs[0].font.size = Pt(10)
     _feq(doc, _cat(_sym("N", "р.н"), _n(" = "), _sym("R", "n,н"), _n(" · b · t · 0.01")), italic=True)
     _feq(doc, _cat(_sym("N", "р.н"), _n(
@@ -483,7 +492,7 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
     doc.add_heading(f"{section_no}.6. Изгибающие моменты и несущая способность", level=2)
     doc.add_paragraph(
         "Момент от каждого усилия — произведение усилия (кгс) на его плечо (мм); "
-        "множитель 0.00001 переводит кгс·мм в кН·м (g ≈ 10 м/с²):"
+        "множитель 0,00001 переводит кгс·мм в кН·м (g ≈ 10 м/с²):"
     ).runs[0].font.size = Pt(10)
     _feq(doc, _cat(_sym("M", "р.н"), _n(
         f" = {_fnum(tensile_lower, 1)} · {_fnum(arm_tensile_lower)} · 0.00001 "
@@ -658,7 +667,7 @@ def make_word_report(
 
     doc.add_paragraph()
     p_conc = doc.add_paragraph()
-    r_conc = p_conc.add_run(conclusion)
+    r_conc = p_conc.add_run(_ru(conclusion))
     r_conc.italic = True
     r_conc.font.size = Pt(10)
 
@@ -820,6 +829,7 @@ def _xl_write_df(ws, df: pd.DataFrame, start_row: int = 1,
 def _xl_section_title(ws, text: str, row: int, ncols: int) -> None:
     cell = ws.cell(row=row, column=1, value=text)
     cell.font = Font(name="Calibri", bold=True, size=11, color="1F3864")
+    cell.alignment = _CENTER
     ws.merge_cells(start_row=row, start_column=1,
                    end_row=row, end_column=ncols)
 
@@ -943,6 +953,8 @@ def make_excel_report(
                 c.font  = Font(name="Calibri", bold=True, size=10)
         c1.border = _BORDER
         c2.border = _BORDER
+        c1.alignment = _CENTER
+        c2.alignment = _CENTER
 
     ws_sum.column_dimensions["A"].width = 38
     ws_sum.column_dimensions["B"].width = 22
