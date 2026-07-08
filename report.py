@@ -143,7 +143,7 @@ def _cell_fill(cell, hex_color: str) -> None:
     tc_pr.append(shd)
 
 
-def _cell_text(cell, text: str, bold=False, size_pt=8,
+def _cell_text(cell, text: str, bold=False, size_pt=12,
                color_hex: str = None, align="center") -> None:
     p = cell.paragraphs[0]
     p.clear()
@@ -177,7 +177,7 @@ def _add_df_table(doc: Document, df: pd.DataFrame,
     for j, col_name in enumerate(df.columns):
         cell = table.rows[0].cells[j]
         _cell_fill(cell, _HDR_FILL)
-        _cell_text(cell, col_name, bold=True, size_pt=8, color_hex="FFFFFF")
+        _cell_text(cell, col_name, bold=True, size_pt=12, color_hex="FFFFFF")
 
     # Данные
     for i, (_, row) in enumerate(df.iterrows()):
@@ -196,7 +196,7 @@ def _add_df_table(doc: Document, df: pd.DataFrame,
                     text = f"{val:.3f}"
             else:
                 text = str(val)
-            _cell_text(cell, text, size_pt=8)
+            _cell_text(cell, text, size_pt=12)
 
 
 def _result_box(doc: Document, label: str, value: str,
@@ -204,8 +204,8 @@ def _result_box(doc: Document, label: str, value: str,
     tbl = doc.add_table(rows=1, cols=2)
     tbl.style = "Table Grid"
     _cell_fill(tbl.rows[0].cells[0], fill_hex)
-    _cell_text(tbl.rows[0].cells[0], label, bold=True, size_pt=10)
-    _cell_text(tbl.rows[0].cells[1], value, size_pt=10, align="center")
+    _cell_text(tbl.rows[0].cells[0], label, bold=True, size_pt=12)
+    _cell_text(tbl.rows[0].cells[1], value, size_pt=12, align="center")
 
 
 # ── Формулы с подстрочными индексами ────────────────────────────────────────
@@ -237,17 +237,90 @@ def _cat(*parts) -> list:
     return out
 
 
-def _feq(doc: Document, tokens: list, size: int = 11, align: str = "center",
+class _Frac:
+    """Токен-дробь: числитель/знаменатель — списки токенов (текст, признак_подстрочного)."""
+    __slots__ = ("num_tokens", "den_tokens")
+
+    def __init__(self, num_tokens: list, den_tokens: list):
+        self.num_tokens = num_tokens
+        self.den_tokens = den_tokens
+
+
+def _frac(num_tokens: list, den_tokens: list) -> list:
+    """Дробь num/den, отображаемая в Word как настоящая дробь (числитель над чертой)."""
+    return [_Frac(num_tokens, den_tokens)]
+
+
+# ── Настоящие дроби (OMML) ──────────────────────────────────────────────────
+
+def _omath_run(text: str, size_pt: float):
+    """Один текстовый run внутри математической зоны Word (m:r)."""
+    r = OxmlElement("m:r")
+    rpr = OxmlElement("w:rPr")
+    rfonts = OxmlElement("w:rFonts")
+    rfonts.set(qn("w:ascii"), "Cambria Math")
+    rfonts.set(qn("w:hAnsi"), "Cambria Math")
+    rpr.append(rfonts)
+    sz = OxmlElement("w:sz")
+    sz.set(qn("w:val"), str(int(round(size_pt * 2))))
+    rpr.append(sz)
+    r.append(rpr)
+    t = OxmlElement("m:t")
+    t.text = text
+    r.append(t)
+    return r
+
+
+def _omath_tokens(tokens: list, size_pt: float) -> list:
+    """Строит элементы OMML (m:r, либо m:sSub для пар текст+подстрочный) из токенов."""
+    elems = []
+    for text, is_sub in tokens:
+        if is_sub and elems is not None and len(elems) > 0 and elems[-1].tag == qn("m:r"):
+            base_r = elems.pop()
+            ssub = OxmlElement("m:sSub")
+            e = OxmlElement("m:e")
+            e.append(base_r)
+            sub = OxmlElement("m:sub")
+            sub.append(_omath_run(text, size_pt))
+            ssub.append(e)
+            ssub.append(sub)
+            elems.append(ssub)
+        else:
+            elems.append(_omath_run(text, size_pt))
+    return elems
+
+
+def _omath_frac(frac: _Frac, size_pt: float):
+    """m:oMath с одной дробью (числитель над знаменателем, с чертой)."""
+    om = OxmlElement("m:oMath")
+    f = OxmlElement("m:f")
+    num = OxmlElement("m:num")
+    for e in _omath_tokens(frac.num_tokens, size_pt):
+        num.append(e)
+    den = OxmlElement("m:den")
+    for e in _omath_tokens(frac.den_tokens, size_pt):
+        den.append(e)
+    f.append(num)
+    f.append(den)
+    om.append(f)
+    return om
+
+
+def _feq(doc: Document, tokens: list, size: float = 16.5, align: str = "center",
          italic: bool = False) -> None:
-    """Строка-формула из токенов (текст, признак_подстрочного_начертания)."""
+    """Строка-формула из токенов: (текст, признак_подстрочного) либо _Frac (дробь)."""
     p = doc.add_paragraph()
     p.alignment = {
         "left":   WD_ALIGN_PARAGRAPH.LEFT,
         "center": WD_ALIGN_PARAGRAPH.CENTER,
     }.get(align, WD_ALIGN_PARAGRAPH.CENTER)
-    p.paragraph_format.space_before = Pt(2)
-    p.paragraph_format.space_after = Pt(6)
-    for text, is_sub in tokens:
+    p.paragraph_format.space_before = Pt(3)
+    p.paragraph_format.space_after = Pt(9)
+    for tok in tokens:
+        if isinstance(tok, _Frac):
+            p._p.append(_omath_frac(tok, size))
+            continue
+        text, is_sub = tok
         run = p.add_run(text)
         run.font.size = Pt(size)
         run.italic = italic
@@ -255,10 +328,14 @@ def _feq(doc: Document, tokens: list, size: int = 11, align: str = "center",
             run.font.subscript = True
 
 
-def _mixed_paragraph(doc: Document, tokens: list, size: int = 10) -> None:
-    """Обычный (не центрированный) абзац с отдельными подстрочными фрагментами."""
+def _mixed_paragraph(doc: Document, tokens: list, size: float = 15) -> None:
+    """Обычный (не центрированный) абзац с подстрочными фрагментами и дробями."""
     p = doc.add_paragraph()
-    for text, is_sub in tokens:
+    for tok in tokens:
+        if isinstance(tok, _Frac):
+            p._p.append(_omath_frac(tok, size))
+            continue
+        text, is_sub = tok
         run = p.add_run(text)
         run.font.size = Pt(size)
         if is_sub:
@@ -346,23 +423,32 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         f"реальных чисел для сечения b×h×t×s = {b_mm:.0f}×{h_mm:.0f}×{t_mm:.1f}×{s_mm:.1f} мм "
         f"— {demo_note} (t = {demo} мин). Расчёт для остальных минут выполняется по тем же "
         f"формулам; полные результаты — в таблицах ниже."
-    )).runs[0].font.size = Pt(10)
+    )).runs[0].font.size = Pt(15)
 
     # 1. Снижение прочности стали
     doc.add_heading(f"{section_no}.1. Снижение прочности стали при нагреве", level=2)
     doc.add_paragraph(
         "Коэффициент снижения предела текучести каждого участка сечения — отношение "
         "предела текучести стали при текущей температуре к пределу текучести при 20 °C:"
-    ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_sym("γ", "x"), _n(" = R"), _sym("y", "x"), _n("(t)  /  R"),
-                   _sym("y", "x"), _n("(20 °C)")), italic=True)
+    ).runs[0].font.size = Pt(15)
+    _feq(doc, _cat(
+        _sym("γ", "x"), _n(" = "),
+        _frac(_cat(_sym("R", "y,x"), _n("(t)")),
+              _cat(_sym("R", "y,x"), _n("(20 °C)"))),
+    ), italic=True)
     doc.add_paragraph(
         f"При t = {demo} мин температуры участков: нижняя полка — {temp_lower:.0f} °C, "
         f"стенка — {temp_web:.0f} °C, верхняя полка — {temp_upper:.0f} °C."
-    ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_sym("γ", "н"),  _n(f" = {yld_lower:.1f} / {yld_lower_0:.1f} = {k_lower:.3f}")))
-    _feq(doc, _cat(_sym("γ", "ст"), _n(f" = {yld_web:.1f} / {yld_web_0:.1f} = {k_web:.3f}")))
-    _feq(doc, _cat(_sym("γ", "в"),  _n(f" = {yld_upper:.1f} / {yld_upper_0:.1f} = {k_upper:.3f}")))
+    ).runs[0].font.size = Pt(15)
+    _feq(doc, _cat(_sym("γ", "н"),  _n(" = "),
+                   _frac(_n(f"{yld_lower:.1f}"), _n(f"{yld_lower_0:.1f}")),
+                   _n(f" = {k_lower:.3f}")))
+    _feq(doc, _cat(_sym("γ", "ст"), _n(" = "),
+                   _frac(_n(f"{yld_web:.1f}"), _n(f"{yld_web_0:.1f}")),
+                   _n(f" = {k_web:.3f}")))
+    _feq(doc, _cat(_sym("γ", "в"),  _n(" = "),
+                   _frac(_n(f"{yld_upper:.1f}"), _n(f"{yld_upper_0:.1f}")),
+                   _n(f" = {k_upper:.3f}")))
 
     # 2. Нормативное сопротивление
     doc.add_heading(f"{section_no}.2. Нормативное сопротивление стали", level=2)
@@ -379,33 +465,52 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
     doc.add_heading(f"{section_no}.3. Положение нейтральной оси", level=2)
     doc.add_paragraph(
         "Сначала проверяется, укладывается ли граница сжатой зоны в толщину полки (x ≤ t):"
-    ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_n("a = ("), _sym("γ", "в"), _n("·b·t + "), _sym("γ", "ст"),
-                   _n("·s·h − 2"), _sym("γ", "ст"), _n("·s·t + "), _sym("γ", "н"),
-                   _n("·b·t)  /  (2"), _sym("γ", "в"), _n("·b)")), italic=True)
-    _feq(doc, _cat(_n(
-        f"a = ({k_upper:.3f}·{b_mm:.0f}·{t_mm:.1f} + {k_web:.3f}·{s_mm:.1f}·{h_mm:.0f} − "
-        f"2·{k_web:.3f}·{s_mm:.1f}·{t_mm:.1f} + {k_lower:.3f}·{b_mm:.0f}·{t_mm:.1f}) / "
-        f"(2·{k_upper:.3f}·{b_mm:.0f}) = {_fnum(a_flange)} мм"
-    )))
+    ).runs[0].font.size = Pt(15)
+    _feq(doc, _cat(
+        _n("a = "),
+        _frac(
+            _cat(_sym("γ", "в"), _n("·b·t + "), _sym("γ", "ст"),
+                 _n("·s·h − 2"), _sym("γ", "ст"), _n("·s·t + "), _sym("γ", "н"), _n("·b·t")),
+            _cat(_n("2"), _sym("γ", "в"), _n("·b")),
+        ),
+    ), italic=True)
+    _feq(doc, _cat(
+        _n("a = "),
+        _frac(
+            _n(f"{k_upper:.3f}·{b_mm:.0f}·{t_mm:.1f} + {k_web:.3f}·{s_mm:.1f}·{h_mm:.0f} − "
+               f"2·{k_web:.3f}·{s_mm:.1f}·{t_mm:.1f} + {k_lower:.3f}·{b_mm:.0f}·{t_mm:.1f}"),
+            _n(f"2·{k_upper:.3f}·{b_mm:.0f}"),
+        ),
+        _n(f" = {_fnum(a_flange)} мм"),
+    ))
     if in_web:
         doc.add_paragraph(_ru(
             f"Так как a = {_fnum(a_flange)} мм > t = {t_mm:.1f} мм, нейтральная ось лежит "
             f"в стенке — показатель сжатой зоны пересчитывается по формуле для стенки:"
-        )).runs[0].font.size = Pt(10)
-        _feq(doc, _cat(_n("a = ("), _sym("γ", "ст"), _n("·h·s − "), _sym("γ", "в"),
-                       _n("·t·b + "), _sym("γ", "н"), _n("·t·b)  /  (2"), _sym("γ", "ст"),
-                       _n("·s)")), italic=True)
-        _feq(doc, _cat(_n(
-            f"a = ({k_web:.3f}·{h_mm:.0f}·{s_mm:.1f} − {k_upper:.3f}·{t_mm:.1f}·{b_mm:.0f} + "
-            f"{k_lower:.3f}·{t_mm:.1f}·{b_mm:.0f}) / (2·{k_web:.3f}·{s_mm:.1f}) = {_fnum(a_web)} мм"
-        )))
+        )).runs[0].font.size = Pt(15)
+        _feq(doc, _cat(
+            _n("a = "),
+            _frac(
+                _cat(_sym("γ", "ст"), _n("·h·s − "), _sym("γ", "в"),
+                     _n("·t·b + "), _sym("γ", "н"), _n("·t·b")),
+                _cat(_n("2"), _sym("γ", "ст"), _n("·s")),
+            ),
+        ), italic=True)
+        _feq(doc, _cat(
+            _n("a = "),
+            _frac(
+                _n(f"{k_web:.3f}·{h_mm:.0f}·{s_mm:.1f} − {k_upper:.3f}·{t_mm:.1f}·{b_mm:.0f} + "
+                   f"{k_lower:.3f}·{t_mm:.1f}·{b_mm:.0f}"),
+                _n(f"2·{k_web:.3f}·{s_mm:.1f}"),
+            ),
+            _n(f" = {_fnum(a_web)} мм"),
+        ))
     else:
         doc.add_paragraph(_ru(
             f"Так как a = {_fnum(a_flange)} мм ≤ t = {t_mm:.1f} мм, нейтральная ось лежит "
             f"в пределах полки — показатель сжатой зоны a = {_fnum(a_flange)} мм принимается "
             f"без пересчёта."
-        )).runs[0].font.size = Pt(10)
+        )).runs[0].font.size = Pt(15)
 
     # 4. Усилия
     doc.add_heading(f"{section_no}.4. Усилия растяжения и сжатия", level=2)
@@ -413,7 +518,7 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         "Каждое усилие — произведение нормативного сопротивления участка на его "
         "площадь в сжатой/растянутой зоне (площадь в мм² переводится в см² "
         "множителем 0,01):"
-    ).runs[0].font.size = Pt(10)
+    ).runs[0].font.size = Pt(15)
     _feq(doc, _cat(_sym("N", "р.н"), _n(" = "), _sym("R", "n,н"), _n(" · b · t · 0.01")), italic=True)
     _feq(doc, _cat(_sym("N", "р.н"), _n(
         f" = {rn_lower:.1f} · {b_mm:.0f} · {t_mm:.1f} · 0.01 = {_fnum(tensile_lower, 1)} кгс"
@@ -459,47 +564,57 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
     doc.add_heading(f"{section_no}.5. Плечи равнодействующих сил", level=2)
     doc.add_paragraph(
         "Плечи измеряются от найденной нейтральной оси до центра тяжести каждой зоны:"
-    ).runs[0].font.size = Pt(10)
+    ).runs[0].font.size = Pt(15)
     if in_web:
-        _feq(doc, _cat(_n(
-            f"h − a − t/2 = {h_mm:.0f} − {_fnum(a_used)} − {t_mm/2:.1f} = "
-            f"{_fnum(arm_tensile_lower)} мм  (плечо "
-        ), _sym("N", "р.н"), _n(")")))
-        _feq(doc, _cat(_n(
-            f"(h − a − t)/2 = ({h_mm:.0f} − {_fnum(a_used)} − {t_mm:.1f})/2 = "
-            f"{_fnum(arm_tensile_web)} мм  (плечо "
-        ), _sym("N", "р.ст"), _n(")")))
-        _feq(doc, _cat(_n(
-            f"(a − t)/2 = ({_fnum(a_used)} − {t_mm:.1f})/2 = "
-            f"{_fnum(arm_compression_web)} мм  (плечо "
-        ), _sym("N", "сж.ст"), _n(")")))
-        _feq(doc, _cat(_n(
-            f"a − t/2 = {_fnum(a_used)} − {t_mm/2:.1f} = "
-            f"{_fnum(arm_compression_upper)} мм  (плечо "
-        ), _sym("N", "сж.в"), _n(")")))
+        _feq(doc, _cat(
+            _n("h − a − "), _frac(_n("t"), _n("2")),
+            _n(f" = {h_mm:.0f} − {_fnum(a_used)} − "), _frac(_n(f"{t_mm:.1f}"), _n("2")),
+            _n(f" = {_fnum(arm_tensile_lower)} мм  (плечо "), _sym("N", "р.н"), _n(")"),
+        ))
+        _feq(doc, _cat(
+            _frac(_n("h − a − t"), _n("2")), _n(" = "),
+            _frac(_n(f"{h_mm:.0f} − {_fnum(a_used)} − {t_mm:.1f}"), _n("2")),
+            _n(f" = {_fnum(arm_tensile_web)} мм  (плечо "), _sym("N", "р.ст"), _n(")"),
+        ))
+        _feq(doc, _cat(
+            _frac(_n("a − t"), _n("2")), _n(" = "),
+            _frac(_n(f"{_fnum(a_used)} − {t_mm:.1f}"), _n("2")),
+            _n(f" = {_fnum(arm_compression_web)} мм  (плечо "), _sym("N", "сж.ст"), _n(")"),
+        ))
+        _feq(doc, _cat(
+            _n("a − "), _frac(_n("t"), _n("2")),
+            _n(f" = {_fnum(a_used)} − "), _frac(_n(f"{t_mm:.1f}"), _n("2")),
+            _n(f" = {_fnum(arm_compression_upper)} мм  (плечо "), _sym("N", "сж.в"), _n(")"),
+        ))
     else:
-        _feq(doc, _cat(_n(
-            f"h − t/2 − a = {h_mm:.0f} − {t_mm/2:.1f} − {_fnum(a_used)} = "
-            f"{_fnum(arm_tensile_lower)} мм  (плечо "
-        ), _sym("N", "р.н"), _n(")")))
-        _feq(doc, _cat(_n(
-            f"h/2 − a = {h_mm/2:.1f} − {_fnum(a_used)} = "
-            f"{_fnum(arm_tensile_web)} мм  (плечо "
-        ), _sym("N", "р.ст"), _n(")")))
-        _feq(doc, _cat(_n(
-            f"(t − a)/2 = ({t_mm:.1f} − {_fnum(a_used)})/2 = "
-            f"{_fnum(arm_compression_web)} мм  (плечо "
-        ), _sym("N", "сж.ст"), _n(")")))
-        _feq(doc, _cat(_n(
-            f"a/2 = {_fnum(a_used)}/2 = {_fnum(arm_compression_upper)} мм  (плечо "
-        ), _sym("N", "сж.в"), _n(")")))
+        _feq(doc, _cat(
+            _n("h − "), _frac(_n("t"), _n("2")), _n(" − a"),
+            _n(f" = {h_mm:.0f} − "), _frac(_n(f"{t_mm:.1f}"), _n("2")),
+            _n(f" − {_fnum(a_used)} = {_fnum(arm_tensile_lower)} мм  (плечо "),
+            _sym("N", "р.н"), _n(")"),
+        ))
+        _feq(doc, _cat(
+            _frac(_n("h"), _n("2")), _n(" − a"),
+            _n(f" = {_fnum(h_mm/2, 1)} − {_fnum(a_used)}"),
+            _n(f" = {_fnum(arm_tensile_web)} мм  (плечо "), _sym("N", "р.ст"), _n(")"),
+        ))
+        _feq(doc, _cat(
+            _frac(_n("t − a"), _n("2")), _n(" = "),
+            _frac(_n(f"{t_mm:.1f} − {_fnum(a_used)}"), _n("2")),
+            _n(f" = {_fnum(arm_compression_web)} мм  (плечо "), _sym("N", "сж.ст"), _n(")"),
+        ))
+        _feq(doc, _cat(
+            _frac(_n("a"), _n("2")), _n(" = "),
+            _frac(_n(f"{_fnum(a_used)}"), _n("2")),
+            _n(f" = {_fnum(arm_compression_upper)} мм  (плечо "), _sym("N", "сж.в"), _n(")"),
+        ))
 
     # 6. Изгибающие моменты и несущая способность
     doc.add_heading(f"{section_no}.6. Изгибающие моменты и несущая способность", level=2)
     doc.add_paragraph(
         "Момент от каждого усилия — произведение усилия (кгс) на его плечо (мм); "
         "множитель 0,00001 переводит кгс·мм в кН·м (g ≈ 10 м/с²):"
-    ).runs[0].font.size = Pt(10)
+    ).runs[0].font.size = Pt(15)
     _feq(doc, _cat(_sym("M", "р.н"), _n(
         f" = {_fnum(tensile_lower, 1)} · {_fnum(arm_tensile_lower)} · 0.00001 "
         f"= {_fnum(moment_lower, 3)} кНм"
@@ -528,17 +643,21 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
     doc.add_paragraph(
         "Момент в середине пролёта от сосредоточенной нагрузки P и от собственного "
         "веса балки q = m·g (не зависит от времени пожара):"
-    ).runs[0].font.size = Pt(10)
-    _feq(doc, _cat(_sym("M", "нагр"),
-                   _n(" = (P·L/4)·9.80665·10⁻³ + (q·L²/8)·0.01")), italic=True)
+    ).runs[0].font.size = Pt(15)
+    _feq(doc, _cat(
+        _sym("M", "нагр"), _n(" = "),
+        _frac(_n("P·L"), _n("4")), _n("·9.80665·10⁻³ + "),
+        _frac(_n("q·L²"), _n("8")), _n("·0.01"),
+    ), italic=True)
     if m_kgm is not None:
         term1 = (load_kg * length_m / 4) * 9.80665e-3
         term2 = (m_kgm * length_m ** 2 / 8) * 0.01
-        _feq(doc, _cat(_sym("M", "нагр"), _n(
-            f" = ({load_kg:.1f}·{length_m:.2f}/4)·9.80665·10⁻³ + "
-            f"({m_kgm:.1f}·{length_m:.2f}²/8)·0.01 = {term1:.3f} + {term2:.3f} "
-            f"= {mom_val:.3f} кНм"
-        )))
+        _feq(doc, _cat(
+            _sym("M", "нагр"), _n(" = "),
+            _frac(_n(f"{load_kg:.1f}·{length_m:.2f}"), _n("4")), _n("·9.80665·10⁻³ + "),
+            _frac(_n(f"{m_kgm:.1f}·{length_m:.2f}²"), _n("8")), _n("·0.01"),
+            _n(f" = {term1:.3f} + {term2:.3f} = {mom_val:.3f} кНм"),
+        ))
     else:
         _feq(doc, _cat(_sym("M", "нагр"), _n(f" = {mom_val:.3f} кНм")))
 
@@ -579,7 +698,9 @@ def make_word_report(
     # ── Глобальный стиль ────────────────────────────────────────────────────
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
-    style.font.size = Pt(11)
+    style.font.size = Pt(16.5)
+    doc.styles["Heading 1"].font.size = Pt(21)
+    doc.styles["Heading 2"].font.size = Pt(19.5)
 
     # ── Поля страницы ────────────────────────────────────────────────────────
     for section in doc.sections:
@@ -593,7 +714,7 @@ def make_word_report(
     h.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = h.add_run("РАСЧЁТ ПРЕДЕЛА ОГНЕСТОЙКОСТИ\nСТАЛЬНОЙ ИЗГИБАЕМОЙ БАЛКИ")
     run.font.name = "Times New Roman"
-    run.font.size = Pt(18)
+    run.font.size = Pt(27)
     run.bold = True
 
     sub = doc.add_paragraph()
@@ -602,7 +723,7 @@ def make_word_report(
         "с учётом неравномерного прогрева двутаврового сечения\n"
         "по методике СП 2.13130.2020"
     )
-    r.font.size = Pt(12)
+    r.font.size = Pt(18)
     r.italic = True
 
     doc.add_paragraph()
@@ -634,8 +755,8 @@ def make_word_report(
         fill = _ALT_FILL if i % 2 == 1 else "FFFFFF"
         _cell_fill(tbl.rows[i].cells[0], fill)
         _cell_fill(tbl.rows[i].cells[1], fill)
-        _cell_text(tbl.rows[i].cells[0], lbl, bold=True, size_pt=10)
-        _cell_text(tbl.rows[i].cells[1], val, size_pt=10)
+        _cell_text(tbl.rows[i].cells[0], lbl, bold=True, size_pt=12)
+        _cell_text(tbl.rows[i].cells[1], val, size_pt=12)
 
     doc.add_paragraph()
 
@@ -668,14 +789,14 @@ def make_word_report(
     r_tbl.style = "Table Grid"
     for i, (lbl, val) in enumerate(res_data):
         _cell_fill(r_tbl.rows[i].cells[0], "D6E4F0")
-        _cell_text(r_tbl.rows[i].cells[0], lbl, bold=True, size_pt=10)
-        _cell_text(r_tbl.rows[i].cells[1], val, size_pt=10, align="center")
+        _cell_text(r_tbl.rows[i].cells[0], lbl, bold=True, size_pt=12)
+        _cell_text(r_tbl.rows[i].cells[1], val, size_pt=12, align="center")
 
     doc.add_paragraph()
     p_conc = doc.add_paragraph()
     r_conc = p_conc.add_run(_ru(conclusion))
     r_conc.italic = True
-    r_conc.font.size = Pt(10)
+    r_conc.font.size = Pt(15)
 
     doc.add_paragraph()
 
@@ -692,7 +813,7 @@ def make_word_report(
         "Вертикальная линия — предел огнестойкости."
     )
     cap_note.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    cap_note.runs[0].font.size = Pt(9)
+    cap_note.runs[0].font.size = Pt(13.5)
     cap_note.runs[0].italic = True
 
     doc.add_paragraph()
@@ -714,7 +835,7 @@ def make_word_report(
             f"Обогреваемые стороны: {sides_str}."
         )
         sec_note.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        sec_note.runs[0].font.size = Pt(9)
+        sec_note.runs[0].font.size = Pt(13.5)
         sec_note.runs[0].italic = True
         doc.add_paragraph()
         _section_num += 1
@@ -740,7 +861,7 @@ def make_word_report(
         "Расчёт ведётся пошагово для каждой минуты: температуры трёх участков сечения → "
         "коэффициенты снижения прочности → нормативное сопротивление → "
         "положение нейтральной оси → усилия → изгибающие моменты → несущая способность."
-    ).runs[0].font.size = Pt(10)
+    ).runs[0].font.size = Pt(15)
     doc.add_paragraph()
 
     steps = [
