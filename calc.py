@@ -93,16 +93,23 @@ def compute(db: SteelDatabase, doc: str, profile_key: str, grade: str,
             load_kg: float = 0.0, length_m: float = 0.0,
             temp_lower_ext: Optional[np.ndarray] = None,
             temp_web_ext: Optional[np.ndarray] = None,
-            temp_upper_ext: Optional[np.ndarray] = None) -> FireCalcResult:
+            temp_upper_ext: Optional[np.ndarray] = None,
+            custom_profile: Optional[dict] = None) -> FireCalcResult:
     """Полный расчёт по методике для одного профиля и марки стали.
 
     Если переданы temp_lower_ext / temp_web_ext / temp_upper_ext —
     используются они вместо данных из базы.
+    Если передан custom_profile (ключи "b, мм", "t, мм", "s, мм", "h, мм",
+    "M, кг") — используется он вместо поиска профиля в сортаменте (doc/profile_key
+    в этом случае не используются для расчёта, только для подписи отчёта).
     """
-    profile_df = db.get_profile_data(doc)
-    if profile_df.empty or profile_key not in profile_df.index:
-        raise ValueError(f"Данные для профиля {profile_key} не найдены.")
-    profile = profile_df.loc[profile_key].squeeze()
+    if custom_profile is not None:
+        profile = pd.Series(custom_profile)
+    else:
+        profile_df = db.get_profile_data(doc)
+        if profile_df.empty or profile_key not in profile_df.index:
+            raise ValueError(f"Данные для профиля {profile_key} не найдены.")
+        profile = profile_df.loc[profile_key].squeeze()
     b = profile.get("b, мм")
     t = profile.get("t, мм")
     s = profile.get("s, мм")

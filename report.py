@@ -186,8 +186,14 @@ def _add_df_table(doc: Document, df: pd.DataFrame,
             cell = table.rows[i + 1].cells[j]
             if fill != "FFFFFF":
                 _cell_fill(cell, fill)
+            col_name = df.columns[j]
             if isinstance(val, (float, np.floating)):
-                text = "—" if (np.isnan(val) or np.isinf(val)) else f"{val:.3f}"
+                if np.isnan(val) or np.isinf(val):
+                    text = "—"
+                elif col_name == "Время, мин":
+                    text = f"{val:.0f}"
+                else:
+                    text = f"{val:.3f}"
             else:
                 text = str(val)
             _cell_text(cell, text, size_pt=8)

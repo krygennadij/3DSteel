@@ -401,17 +401,56 @@ def main():
         _DEFAULT_PROFILE = "20Б1"
         _DEFAULT_GRADE   = "С345"
 
-        doc_idx = db.profile_docs.index(_DEFAULT_DOC) if _DEFAULT_DOC in db.profile_docs else 0
-        selected_doc = st.selectbox(
-            "Нормативный документ", db.profile_docs, index=doc_idx,
-            help="ГОСТ или СТО, по которому выбирается сортамент двутавров",
+        profile_source = st.radio(
+            "Источник сечения",
+            ["Из сортамента", "Задать вручную"],
+            horizontal=True,
+            help="Выбор готового двутавра по ГОСТ/СТО или ввод произвольных размеров сечения",
         )
-        profile_keys = db.get_profile_data(selected_doc).index.tolist()
-        prof_idx = profile_keys.index(_DEFAULT_PROFILE) if _DEFAULT_PROFILE in profile_keys else 0
-        selected_profile = st.selectbox(
-            "Профиль двутавра", profile_keys, index=prof_idx,
-            help="Обозначение профиля по выбранному документу",
-        )
+
+        custom_profile = None
+        if profile_source == "Из сортамента":
+            doc_idx = db.profile_docs.index(_DEFAULT_DOC) if _DEFAULT_DOC in db.profile_docs else 0
+            selected_doc = st.selectbox(
+                "Нормативный документ", db.profile_docs, index=doc_idx,
+                help="ГОСТ или СТО, по которому выбирается сортамент двутавров",
+            )
+            profile_keys = db.get_profile_data(selected_doc).index.tolist()
+            prof_idx = profile_keys.index(_DEFAULT_PROFILE) if _DEFAULT_PROFILE in profile_keys else 0
+            selected_profile = st.selectbox(
+                "Профиль двутавра", profile_keys, index=prof_idx,
+                help="Обозначение профиля по выбранному документу",
+            )
+        else:
+            st.caption("Размеры двутаврового сечения")
+            h_custom = st.number_input(
+                "Высота сечения h, мм", min_value=10.0, value=300.0, step=1.0, format="%.1f",
+            )
+            b_custom = st.number_input(
+                "Ширина полки b, мм", min_value=10.0, value=150.0, step=1.0, format="%.1f",
+            )
+            t_custom = st.number_input(
+                "Толщина полки t, мм", min_value=1.0, value=10.2, step=0.1, format="%.1f",
+            )
+            s_custom = st.number_input(
+                "Толщина стенки s, мм", min_value=1.0, value=6.5, step=0.1, format="%.1f",
+            )
+            _area_est_mm2 = 2 * b_custom * t_custom + max(h_custom - 2 * t_custom, 0.0) * s_custom
+            _m_est = _area_est_mm2 / 100.0 * 0.785  # площадь, см² × плотность стали 7850 кг/м³
+            m_custom = st.number_input(
+                "Погонная масса M, кг/м", min_value=0.1, value=round(_m_est, 1), step=0.1, format="%.2f",
+                help="По умолчанию оценена по площади сечения (сталь, 7850 кг/м³) без учёта скруглений; можно скорректировать.",
+            )
+            selected_doc = "Пользовательское сечение"
+            selected_profile = st.text_input(
+                "Обозначение сечения",
+                value=f"{h_custom:.0f}x{b_custom:.0f}x{t_custom:.1f}/{s_custom:.1f}",
+                help="Произвольное название для отчёта",
+            )
+            custom_profile = {
+                "b, мм": b_custom, "t, мм": t_custom, "s, мм": s_custom,
+                "h, мм": h_custom, "M, кг": m_custom,
+            }
 
         st.markdown("##### 2. Материал")
         grade_idx = db.steel_grades.index(_DEFAULT_GRADE) if _DEFAULT_GRADE in db.steel_grades else 0
@@ -520,19 +559,29 @@ def main():
                       load_value, length_value,
                       temp_lower_ext=_temp_lower_ext,
                       temp_web_ext=_temp_web_ext,
-                      temp_upper_ext=_temp_upper_ext)
+                      temp_upper_ext=_temp_upper_ext,
+                      custom_profile=custom_profile)
     except ValueError as e:
         st.error(str(e))
         return
 
-    profile_row = db.get_profile_data(selected_doc).loc[selected_profile].squeeze()
-    b_dim = profile_row.get("b, мм")
-    h_dim = profile_row.get("h, мм")
-    t_dim = profile_row.get("t, мм")
-    s_dim = profile_row.get("s, мм")
-    m_dim = profile_row.get("M, кг")
-    A_dim = profile_row.get("А, см2")   # точная площадь из сортамента
-    R_dim = profile_row.get("R, мм")    # внутренний радиус скругления
+    if custom_profile is not None:
+        b_dim = custom_profile["b, мм"]
+        h_dim = custom_profile["h, мм"]
+        t_dim = custom_profile["t, мм"]
+        s_dim = custom_profile["s, мм"]
+        m_dim = custom_profile["M, кг"]
+        A_dim = None   # точной площади из сортамента нет — оценивается по погонной массе
+        R_dim = None   # радиус скругления неизвестен
+    else:
+        profile_row = db.get_profile_data(selected_doc).loc[selected_profile].squeeze()
+        b_dim = profile_row.get("b, мм")
+        h_dim = profile_row.get("h, мм")
+        t_dim = profile_row.get("t, мм")
+        s_dim = profile_row.get("s, мм")
+        m_dim = profile_row.get("M, кг")
+        A_dim = profile_row.get("А, см2")   # точная площадь из сортамента
+        R_dim = profile_row.get("R, мм")    # внутренний радиус скругления
     has_dims = all(v is not None for v in (b_dim, h_dim, t_dim, s_dim))
 
     limit = res.fire_limit_minute
