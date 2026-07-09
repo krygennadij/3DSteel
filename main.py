@@ -21,12 +21,15 @@ def load_db() -> SteelDatabase:
 
 
 @st.cache_resource
-def load_ogz_data() -> dict:
+def load_ogz_data(mtime: float = 0.0) -> dict:
     """Загружает температуры с ОГЗ из Excel-файла.
 
     Возвращает словарь {имя_листа: {'lower': array, 'web': array, 'upper': array}}
     с поминутными значениями (0..150 мин включительно).
     Если файл не найден — пустой словарь.
+
+    Аргумент mtime участвует в ключе кэша Streamlit: при изменении файла
+    на диске кэш автоматически считается устаревшим и данные перечитываются.
     """
     if not os.path.exists(_OGZ_EXCEL):
         return {}
@@ -536,7 +539,8 @@ def main():
             st.info("Задайте нагрузку и длину — иначе учитывается только собственный вес балки.")
 
         st.markdown("##### 4. Температуры сечения")
-        _ogz_data = load_ogz_data()
+        _ogz_mtime = os.path.getmtime(_OGZ_EXCEL) if os.path.exists(_OGZ_EXCEL) else 0.0
+        _ogz_data = load_ogz_data(_ogz_mtime)
         _ogz_options = [f"ОГЗ: {s}" for s in _ogz_data.keys()]
         _temp_source_options = ["Встроенные данные (без ОГЗ)"] + _ogz_options + ["Загрузить CSV", "Ввести вручную"]
         temp_source = st.radio(
