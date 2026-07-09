@@ -1000,6 +1000,7 @@ def main():
                         s_mm=s_dim if has_dims else None,
                         m_kgm=m_dim,
                         geom_df=_geom_df_report,
+                        comparison=_cmp_scenarios if _cmp_scenarios else None,
                     )
                 st.download_button(
                     label="⬇ Скачать Excel (.xlsx)",

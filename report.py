@@ -1012,6 +1012,56 @@ def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
     return chart
 
 
+def _make_comparison_chart_xl(ws_data, n_rows: int, series_colors: list) -> ScatterChart:
+    """Нативный Excel ScatterChart для сравнения нескольких сценариев ОГЗ.
+
+    Столбец A — время; столбцы B..(B+len(series_colors)-1) — несущая способность
+    каждого сценария (цвета из series_colors); последний столбец — момент от
+    нагрузки (общий, пунктирная синяя линия)."""
+    chart = ScatterChart()
+    chart.title  = "Несущая способность: сравнение вариантов ОГЗ"
+    chart.style  = 10
+    chart.scatterStyle = "smooth"
+    chart.x_axis.title = "Время, мин"
+    chart.x_axis.axPos = "b"
+    chart.y_axis.title = "Момент, кНм"
+    chart.y_axis.axPos = "l"
+    chart.height = 14
+    chart.width  = 22
+
+    x_ref = Reference(ws_data, min_col=1, min_row=2, max_row=n_rows + 1)
+
+    for i, color in enumerate(series_colors):
+        col = 2 + i
+        ref = Reference(ws_data, min_col=col, max_col=col, min_row=1, max_row=n_rows + 1)
+        s = Series(ref, x_ref, title_from_data=True)
+        s.marker = Marker(symbol="none")
+        s.graphicalProperties.line.solidFill = color
+        s.graphicalProperties.line.width = 25000
+        s.smooth = True
+        chart.series.append(s)
+
+    mom_col = 2 + len(series_colors)
+    mom_ref = Reference(ws_data, min_col=mom_col, max_col=mom_col,
+                        min_row=1, max_row=n_rows + 1)
+    s_mom = Series(mom_ref, x_ref, title_from_data=True)
+    s_mom.marker = Marker(symbol="none")
+    s_mom.graphicalProperties.line.solidFill = "0055CC"
+    s_mom.graphicalProperties.line.width = 25000
+    s_mom.graphicalProperties.line.dashDot = "dash"
+    s_mom.smooth = True
+    chart.series.append(s_mom)
+
+    chart.x_axis.majorGridlines = ChartLines()
+    chart.y_axis.majorGridlines = ChartLines()
+    chart.x_axis.delete = False
+    chart.y_axis.delete = False
+    chart.y_axis.title.layout = Layout(
+        manualLayout=ManualLayout(xMode="edge", yMode="edge", x=0.01, y=0.30)
+    )
+    return chart
+
+
 def make_excel_report(
     res: FireCalcResult,
     doc_name: str,
@@ -1026,6 +1076,7 @@ def make_excel_report(
     s_mm: float = None,
     m_kgm: float = None,
     geom_df: pd.DataFrame = None,
+    comparison: list = None,
 ) -> bytes:
     """Возвращает байты .xlsx с данными и нативными Excel-графиками."""
     wb = openpyxl.Workbook()
@@ -1127,6 +1178,26 @@ def make_excel_report(
     if geom_df is not None:
         ws_g = wb.create_sheet("Параметры огнезащиты")
         _xl_write_df(ws_g, geom_df)
+
+    # ── Лист 8: Сравнение вариантов ОГЗ (если передано) ──────────────────────
+    if comparison:
+        ws_cmp = wb.create_sheet("Сравнение ОГЗ")
+
+        t_max = max(int(r.load_capacity["Время, мин"].iloc[-1]) for _, r, _ in comparison)
+        time_full = np.arange(0, t_max + 1, dtype=float)
+        cmp_df = pd.DataFrame({"Время, мин": time_full})
+        colors = []
+        for label, res_cmp, color in comparison:
+            cap_series = res_cmp.load_capacity.set_index("Время, мин")["Несущая способность, кНм"]
+            cmp_df[label] = cap_series.reindex(time_full).values
+            colors.append(color.lstrip("#").upper())
+        cmp_df["Момент от нагрузки, кНм"] = comparison[0][1].applied_moment_value
+
+        n_cmp = len(cmp_df)
+        _xl_write_df(ws_cmp, cmp_df.round(4))
+
+        chart_cmp = _make_comparison_chart_xl(ws_cmp, n_cmp, colors)
+        ws_cmp.add_chart(chart_cmp, "G2")
 
     buf = io.BytesIO()
     wb.save(buf)
