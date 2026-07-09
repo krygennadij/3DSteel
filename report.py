@@ -12,7 +12,9 @@ import numpy as np
 import openpyxl
 from openpyxl.chart import Reference, ScatterChart, Series
 from openpyxl.chart.axis import ChartLines
+from openpyxl.chart.layout import Layout, ManualLayout
 from openpyxl.chart.marker import Marker
+from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.styles import (Alignment, Border, Font, PatternFill, Side,
                               numbers)
 from openpyxl.utils import get_column_letter
@@ -960,6 +962,17 @@ def _xl_section_title(ws, text: str, row: int, ncols: int) -> None:
                    end_row=row, end_column=ncols)
 
 
+def _nice_major_unit(max_value: float, target_ticks: int = 15) -> float:
+    """Круглый шаг делений оси, дающий примерно target_ticks подписей."""
+    if max_value <= 0:
+        return 1
+    raw = max_value / target_ticks
+    for step in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500):
+        if step >= raw:
+            return step
+    return raw
+
+
 def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
     """Создаёт нативный Excel ScatterChart (Точечная с гладкими кривыми)."""
     chart = ScatterChart()
@@ -1021,11 +1034,23 @@ def _make_comparison_chart_xl(ws_data, n_rows: int, series_colors: list) -> Scat
     chart.x_axis.title = "Время, мин"
     chart.x_axis.axPos = "b"
     chart.x_axis.scaling.min = 0
+    chart.x_axis.scaling.max = n_rows - 1
+    chart.x_axis.majorUnit = _nice_major_unit(n_rows - 1)
     chart.y_axis.title = "Момент, кНм"
     chart.y_axis.axPos = "l"
     chart.y_axis.scaling.min = 0
     chart.height = 14
     chart.width  = 22
+
+    # Область построения — фиксированные поля, чтобы заголовок оси Y и
+    # легенда не наезжали на подписи делений (Excel сам не всегда даёт
+    # графику достаточно места).
+    chart.layout = Layout(
+        manualLayout=ManualLayout(
+            layoutTarget="inner", xMode="edge", yMode="edge",
+            x=0.09, y=0.03, w=0.88, h=0.82,
+        )
+    )
 
     x_ref = Reference(ws_data, min_col=1, min_row=2, max_row=n_rows + 1)
 
@@ -1054,6 +1079,19 @@ def _make_comparison_chart_xl(ws_data, n_rows: int, series_colors: list) -> Scat
     chart.y_axis.majorGridlines = ChartLines()
     chart.x_axis.delete = False
     chart.y_axis.delete = False
+
+    # Легенда — компактным блоком в правом верхнем углу поверх графика,
+    # с белой подложкой и рамкой, чтобы не сжимать область построения.
+    chart.legend.position = "r"
+    chart.legend.overlay = True
+    chart.legend.layout = Layout(
+        manualLayout=ManualLayout(
+            xMode="edge", yMode="edge", x=0.615, y=0.03, w=0.35, h=0.20,
+        )
+    )
+    chart.legend.spPr = GraphicalProperties(solidFill="FFFFFF")
+    chart.legend.spPr.line.solidFill = "000000"
+
     return chart
 
 
