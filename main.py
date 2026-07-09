@@ -109,7 +109,7 @@ def make_chart(res: FireCalcResult) -> go.Figure:
     fig.update_layout(
         template="simple_white",
         xaxis=dict(title=dict(text="Время, мин", font=dict(size=14)),
-                   dtick=1, **GRID),
+                   nticks=15, **GRID),
         yaxis=dict(title=dict(text="Момент, кНм", font=dict(size=14)),
                    range=[0, y_max], **GRID),
         hovermode="x unified",
