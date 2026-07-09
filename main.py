@@ -121,6 +121,66 @@ def make_chart(res: FireCalcResult) -> go.Figure:
     return fig
 
 
+def make_comparison_chart(scenarios: list) -> go.Figure:
+    """scenarios: список (подпись, FireCalcResult, цвет). Момент от нагрузки один
+    для всех (не зависит от температуры), рисуется одной общей линией."""
+    fig = go.Figure()
+    mom = scenarios[0][1].applied_moment_value if scenarios else 0.0
+    x_max = 0.0
+    y_max = 0.0
+
+    for label, res, color in scenarios:
+        t_arr = res.load_capacity["Время, мин"].to_numpy(dtype=float)
+        cap   = res.load_capacity["Несущая способность, кНм"].to_numpy(dtype=float)
+        finite_cap = cap[np.isfinite(cap)]
+        if len(finite_cap) > 0:
+            y_max = max(y_max, float(finite_cap[0]) * 1.08)
+        if len(t_arr) > 0:
+            x_max = max(x_max, float(t_arr[-1]))
+
+        fig.add_trace(go.Scatter(
+            x=t_arr, y=cap, mode="lines", name=label,
+            line=dict(color=color, width=3), connectgaps=False,
+            hovertemplate="%{x:.0f} мин — %{y:.2f} кНм<extra>" + label + "</extra>",
+        ))
+
+        limit = res.fire_limit_minute
+        if limit is not None and limit > 0:
+            y0 = cap[limit - 1] if np.isfinite(cap[limit - 1]) else mom + 1
+            y1 = cap[limit] if limit < len(cap) and np.isfinite(cap[limit]) else mom - 1
+            x_cross = float(limit - 1) + (y0 - mom) / (y0 - y1) if y0 != y1 else float(limit)
+            fig.add_vline(x=x_cross, line=dict(color=color, width=1, dash="dot"))
+
+    if x_max > 0:
+        fig.add_trace(go.Scatter(
+            x=[0, x_max], y=[mom, mom], mode="lines",
+            name="Момент от нагрузки, кНм",
+            line=dict(color="#0055cc", width=2, dash="dash"),
+            hovertemplate="%{y:.3f} кНм<extra>Момент от нагрузки</extra>",
+        ))
+
+    GRID = dict(showgrid=True, gridwidth=1, gridcolor="rgba(0,0,0,0.12)",
+                ticks="inside", ticklen=6,
+                showline=True, linewidth=1.5, linecolor="black",
+                mirror=True, tickfont=dict(size=13))
+
+    fig.update_layout(
+        template="simple_white",
+        xaxis=dict(title=dict(text="Время, мин", font=dict(size=14)), **GRID),
+        yaxis=dict(title=dict(text="Момент, кНм", font=dict(size=14)),
+                   range=[0, y_max if y_max > 0 else 100], **GRID),
+        hovermode="x unified",
+        legend=dict(
+            orientation="h", yanchor="top", y=-0.18,
+            xanchor="center", x=0.5, font=dict(size=13),
+        ),
+        font=dict(size=13),
+        margin=dict(t=20, b=15, l=70, r=20),
+        height=600,
+    )
+    return fig
+
+
 _SIDE_ORDER = ["bottom", "right", "left", "top"]   # порядок trace'ов 1..4
 
 
@@ -594,7 +654,10 @@ def main():
         "Параметры — в боковой панели слева."
     )
 
-    tab1, tab2, tab3 = st.tabs(["📊 Несущая способность", "📐 Параметры огнезащиты", "📄 Отчёт"])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Несущая способность", "📐 Параметры огнезащиты",
+        "📈 Сравнение ОГЗ", "📄 Отчёт",
+    ])
 
     with tab1:
         # ── Баннер с результатом ─────────────────────────────────────────────
@@ -805,8 +868,71 @@ def main():
         else:
             st.warning("Геометрические данные или погонная масса недоступны для этого профиля.")
 
-    # ── Вкладка 3: Отчёт ─────────────────────────────────────────────────────
+    # ── Вкладка 3: Сравнение вариантов ОГЗ ───────────────────────────────────
     with tab3:
+        st.subheader("Несущая способность: без ОГЗ и с ОГЗ (ГКЛ)")
+        st.caption(
+            "Три варианта огнезащиты для текущего профиля, стали, нагрузки и пролёта "
+            "(см. боковую панель): без защиты (встроенные данные), 1 слой ГКЛ и "
+            "2 слоя ГКЛ (по данным листов «температура с ОГЗ.xlsx»)."
+        )
+
+        _cmp_specs = [
+            ("Без ОГЗ",           None,          "#e60000"),
+            ("ОГЗ: 1 слой ГКЛ",   "1 слой ГКЛ",  "#f39c12"),
+            ("ОГЗ: 2 слой ГКЛ",   "2 слой ГКЛ",  "#2ecc71"),
+        ]
+        _cmp_scenarios = []
+        _cmp_missing = []
+        for _label, _sheet_key, _color in _cmp_specs:
+            try:
+                if _sheet_key is None:
+                    _res_cmp = compute(db, selected_doc, selected_profile, selected_grade,
+                                       load_value, length_value, custom_profile=custom_profile)
+                elif _sheet_key in _ogz_data:
+                    _d = _ogz_data[_sheet_key]
+                    _res_cmp = compute(db, selected_doc, selected_profile, selected_grade,
+                                       load_value, length_value,
+                                       temp_lower_ext=_d["lower"], temp_web_ext=_d["web"],
+                                       temp_upper_ext=_d["upper"], custom_profile=custom_profile)
+                else:
+                    _cmp_missing.append(_label)
+                    continue
+            except ValueError as e:
+                st.error(f"{_label}: {e}")
+                continue
+            _cmp_scenarios.append((_label, _res_cmp, _color))
+
+        if _cmp_missing:
+            st.warning(
+                "Не найдены данные ОГЗ для: " + ", ".join(_cmp_missing) +
+                " (файл «температура с ОГЗ.xlsx» отсутствует или неполон)."
+            )
+
+        if _cmp_scenarios:
+            st.plotly_chart(make_comparison_chart(_cmp_scenarios), width="stretch")
+
+            _cmp_rows = []
+            for _label, _res_cmp, _ in _cmp_scenarios:
+                _lim = _res_cmp.fire_limit_minute
+                if _lim is None:
+                    _lim_str = f"> {int(_res_cmp.load_capacity['Время, мин'].iloc[-1])} мин"
+                elif _lim == 0:
+                    _lim_str = "< 1 мин"
+                else:
+                    _lim_str = f"{_lim} мин"
+                _cmp_rows.append({
+                    "Вариант":                            _label,
+                    "Предел огнестойкости":                _lim_str,
+                    "Несущая способность при t = 0, кНм":  round(
+                        _res_cmp.load_capacity["Несущая способность, кНм"].iloc[0], 1),
+                })
+            st.dataframe(pd.DataFrame(_cmp_rows), hide_index=True, use_container_width=True)
+        else:
+            st.info("Нет доступных данных для сравнения.")
+
+    # ── Вкладка 4: Отчёт ─────────────────────────────────────────────────────
+    with tab4:
         st.subheader("Выгрузка отчёта")
         st.markdown(
             "**Word (.docx)** — подробный текстовый отчёт со схемами, графиком "
