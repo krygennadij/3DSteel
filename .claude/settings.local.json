@@ -27,7 +27,9 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python \"C:\\\\Users\\\\kryge\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--YandexDisk-02-PROJECT-Python-steel-Steel\\\\0d12af39-cff2-4d05-9dd7-44534b23b15d\\\\scratchpad\\\\gen_sample_xlsx.py\")"
+      "Bash(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python \"C:\\\\Users\\\\kryge\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--YandexDisk-02-PROJECT-Python-steel-Steel\\\\0d12af39-cff2-4d05-9dd7-44534b23b15d\\\\scratchpad\\\\gen_sample_xlsx.py\")",
+      "Bash(git fetch *)",
+      "Bash(.venv/Scripts/python.exe -c ' *)"
     ]
   }
 }
