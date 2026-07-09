@@ -55,6 +55,25 @@ def load_ogz_data(mtime: float = 0.0) -> dict:
     return result
 
 
+def _nice_dtick(max_value: float, target_ticks: int = 15):
+    """Возвращает (шаг делений, верхняя граница оси), при которых и 0, и
+    max_value гарантированно попадают на подписанное деление: шаг подбирается
+    близким к target_ticks делений, а граница оси округляется вверх до
+    ближайшего кратного шагу (если max_value само не делится нацело)."""
+    if max_value <= 0:
+        return 1, 1
+    raw = max_value / target_ticks
+    candidates = [1, 2, 5, 10, 15, 20, 25, 30, 50, 100, 150, 200, 250, 500, 1000]
+    divisors = [c for c in candidates if c <= max_value and max_value % c == 0
+                and 0.4 * raw <= c <= 2.5 * raw]
+    if divisors:
+        step = min(divisors, key=lambda c: abs(c - raw))
+    else:
+        step = next((c for c in candidates if c >= raw), candidates[-1])
+    axis_max = math.ceil(max_value / step) * step
+    return step, axis_max
+
+
 def make_chart(res: FireCalcResult) -> go.Figure:
     t_arr = res.load_capacity["Время, мин"].to_numpy(dtype=float)
     cap   = res.load_capacity["Несущая способность, кНм"].to_numpy(dtype=float)
@@ -63,6 +82,7 @@ def make_chart(res: FireCalcResult) -> go.Figure:
 
     finite_cap = cap[np.isfinite(cap)]
     y_max = float(finite_cap[0]) * 1.08 if len(finite_cap) > 0 else 100.0
+    x_max = float(t_arr[-1]) if len(t_arr) > 0 else 1.0
 
     fig = go.Figure()
 
@@ -106,10 +126,12 @@ def make_chart(res: FireCalcResult) -> go.Figure:
                 showline=True, linewidth=1.5, linecolor="black",
                 mirror=True, tickfont=dict(size=13))
 
+    x_dtick, x_axis_max = _nice_dtick(x_max)
+
     fig.update_layout(
         template="simple_white",
         xaxis=dict(title=dict(text="Время, мин", font=dict(size=14)),
-                   nticks=15, **GRID),
+                   dtick=x_dtick, range=[0, x_axis_max], **GRID),
         yaxis=dict(title=dict(text="Момент, кНм", font=dict(size=14)),
                    range=[0, y_max], **GRID),
         hovermode="x unified",
@@ -167,9 +189,12 @@ def make_comparison_chart(scenarios: list) -> go.Figure:
                 showline=True, linewidth=1.5, linecolor="black",
                 mirror=True, tickfont=dict(size=13))
 
+    x_dtick, x_axis_max = _nice_dtick(x_max) if x_max > 0 else (1, 1)
+
     fig.update_layout(
         template="simple_white",
-        xaxis=dict(title=dict(text="Время, мин", font=dict(size=14)), **GRID),
+        xaxis=dict(title=dict(text="Время, мин", font=dict(size=14)),
+                   dtick=x_dtick, range=[0, x_axis_max], **GRID),
         yaxis=dict(title=dict(text="Момент, кНм", font=dict(size=14)),
                    range=[0, y_max if y_max > 0 else 100], **GRID),
         hovermode="x unified",

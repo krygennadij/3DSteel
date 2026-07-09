@@ -962,15 +962,23 @@ def _xl_section_title(ws, text: str, row: int, ncols: int) -> None:
                    end_row=row, end_column=ncols)
 
 
-def _nice_major_unit(max_value: float, target_ticks: int = 15) -> float:
-    """Круглый шаг делений оси, дающий примерно target_ticks подписей."""
+def _nice_major_unit(max_value: float, target_ticks: int = 15):
+    """Возвращает (шаг делений, верхняя граница оси), при которых и 0, и
+    max_value гарантированно попадают на подписанное деление: шаг подбирается
+    близким к target_ticks делений, а граница оси округляется вверх до
+    ближайшего кратного шагу (если max_value само не делится нацело)."""
     if max_value <= 0:
-        return 1
+        return 1, 1
     raw = max_value / target_ticks
-    for step in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500):
-        if step >= raw:
-            return step
-    return raw
+    candidates = (1, 2, 5, 10, 15, 20, 25, 30, 50, 100, 150, 200, 250, 500, 1000)
+    divisors = [c for c in candidates if c <= max_value and max_value % c == 0
+                and 0.4 * raw <= c <= 2.5 * raw]
+    if divisors:
+        step = min(divisors, key=lambda c: abs(c - raw))
+    else:
+        step = next((c for c in candidates if c >= raw), candidates[-1])
+    axis_max = math.ceil(max_value / step) * step
+    return step, axis_max
 
 
 def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
@@ -1033,9 +1041,10 @@ def _make_comparison_chart_xl(ws_data, n_rows: int, series_colors: list) -> Scat
     chart.scatterStyle = "smooth"
     chart.x_axis.title = "Время, мин"
     chart.x_axis.axPos = "b"
+    _dtick, _axis_max = _nice_major_unit(n_rows - 1)
     chart.x_axis.scaling.min = 0
-    chart.x_axis.scaling.max = n_rows - 1
-    chart.x_axis.majorUnit = _nice_major_unit(n_rows - 1)
+    chart.x_axis.scaling.max = _axis_max
+    chart.x_axis.majorUnit = _dtick
     chart.y_axis.title = "Момент, кНм"
     chart.y_axis.axPos = "l"
     chart.y_axis.scaling.min = 0
