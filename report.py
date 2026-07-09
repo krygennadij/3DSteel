@@ -12,7 +12,6 @@ import numpy as np
 import openpyxl
 from openpyxl.chart import Reference, ScatterChart, Series
 from openpyxl.chart.axis import ChartLines
-from openpyxl.chart.layout import Layout, ManualLayout
 from openpyxl.chart.marker import Marker
 from openpyxl.styles import (Alignment, Border, Font, PatternFill, Side,
                               numbers)
@@ -964,13 +963,15 @@ def _xl_section_title(ws, text: str, row: int, ncols: int) -> None:
 def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
     """Создаёт нативный Excel ScatterChart (Точечная с гладкими кривыми)."""
     chart = ScatterChart()
-    chart.title  = "Несущая способность при пожаре"
+    chart.title  = None
     chart.style  = 10
     chart.scatterStyle = "smooth"
     chart.x_axis.title = "Время, мин"
     chart.x_axis.axPos = "b"
+    chart.x_axis.scaling.min = 0
     chart.y_axis.title = "Момент, кНм"
     chart.y_axis.axPos = "l"
+    chart.y_axis.scaling.min = 0
     chart.height = 14
     chart.width  = 22
 
@@ -1004,11 +1005,6 @@ def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
     chart.x_axis.delete = False
     chart.y_axis.delete = False
 
-    # Без ручного layout заголовок оси Y у Excel наезжает на подписи делений
-    chart.y_axis.title.layout = Layout(
-        manualLayout=ManualLayout(xMode="edge", yMode="edge", x=0.01, y=0.30)
-    )
-
     return chart
 
 
@@ -1019,13 +1015,15 @@ def _make_comparison_chart_xl(ws_data, n_rows: int, series_colors: list) -> Scat
     каждого сценария (цвета из series_colors); последний столбец — момент от
     нагрузки (общий, пунктирная синяя линия)."""
     chart = ScatterChart()
-    chart.title  = "Несущая способность: сравнение вариантов ОГЗ"
+    chart.title  = None
     chart.style  = 10
     chart.scatterStyle = "smooth"
     chart.x_axis.title = "Время, мин"
     chart.x_axis.axPos = "b"
+    chart.x_axis.scaling.min = 0
     chart.y_axis.title = "Момент, кНм"
     chart.y_axis.axPos = "l"
+    chart.y_axis.scaling.min = 0
     chart.height = 14
     chart.width  = 22
 
@@ -1056,9 +1054,6 @@ def _make_comparison_chart_xl(ws_data, n_rows: int, series_colors: list) -> Scat
     chart.y_axis.majorGridlines = ChartLines()
     chart.x_axis.delete = False
     chart.y_axis.delete = False
-    chart.y_axis.title.layout = Layout(
-        manualLayout=ManualLayout(xMode="edge", yMode="edge", x=0.01, y=0.30)
-    )
     return chart
 
 
