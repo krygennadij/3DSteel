@@ -290,19 +290,44 @@ def make_section_figure(b: float, h: float, t: float, s: float, label: str,
     for side_name, coords, side_lbl in SIDES:
         heated = side_name in heated_sides
         color  = ORANGE if heated else COLD
-        lw     = 6.0    if heated else 1.5
         xs, ys = _path_pts(coords, N)
         state  = "🔥 Обогревается"       if heated else "❄ Не обогревается"
         action = "Нажмите, чтобы убрать" if heated else "Нажмите, чтобы включить"
+        # Тонкая линия + крупные прозрачные маркеры — только для наведения/клика;
+        # видимую толстую полосу рисуют прямоугольники ниже (без скруглений).
         fig.add_trace(go.Scatter(
             x=xs, y=ys,
             mode="lines+markers",
-            line=dict(color=color, width=lw),
+            line=dict(color=color, width=1),
             marker=dict(size=14, opacity=0.01, color=color, symbol="circle"),
             name=side_lbl,
             showlegend=False,
             hovertemplate=f"{state}<br><i>{action}</i><extra>{side_lbl}</extra>",
         ))
+
+    # ── Видимая обводка сторон — прямоугольники по каждому осепараллельному
+    # отрезку контура, с прямыми (не скруглёнными) углами на стыке полки и
+    # стенки, в отличие от обводки толстой линией.
+    heated_hw = max(min(t, s) * 0.28, min(hb, hh) * 0.012)
+    cold_hw   = max(min(t, s) * 0.08, min(hb, hh) * 0.004)
+    for side_name, coords, _ in SIDES:
+        heated = side_name in heated_sides
+        color  = ORANGE if heated else COLD
+        hw     = heated_hw if heated else cold_hw
+        for (x0, y0), (x1, y1) in zip(coords[:-1], coords[1:]):
+            if x0 == x1:
+                ylo, yhi = sorted((y0, y1))
+                rx = [x0 - hw, x0 + hw, x0 + hw, x0 - hw, x0 - hw]
+                ry = [ylo - hw, ylo - hw, yhi + hw, yhi + hw, ylo - hw]
+            else:
+                xlo, xhi = sorted((x0, x1))
+                rx = [xlo - hw, xhi + hw, xhi + hw, xlo - hw, xlo - hw]
+                ry = [y0 - hw, y0 - hw, y0 + hw, y0 + hw, y0 - hw]
+            fig.add_trace(go.Scatter(
+                x=rx, y=ry, fill="toself",
+                fillcolor=color, line=dict(color=color, width=0),
+                mode="lines", hoverinfo="skip", showlegend=False,
+            ))
 
     # ── Размерные линии ───────────────────────────────────────────────────────
     padx = max(hb * 0.42, 18.0)   # компактнее → балка занимает б́ольшую долю фигуры

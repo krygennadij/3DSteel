@@ -103,7 +103,8 @@ def _section_png(b: float, h: float, t: float, s: float,
     }
     for side, (px, py) in side_paths.items():
         color = ORANGE if side in heated_sides else GRAY
-        ax.plot(px, py, color=color, linewidth=LW, solid_capstyle="round")
+        ax.plot(px, py, color=color, linewidth=LW,
+                solid_capstyle="butt", solid_joinstyle="miter")
 
     ax.set_aspect("equal")
     ax.axis("off")
