@@ -268,9 +268,6 @@ def make_comparison_chart(scenarios: list) -> go.Figure:
     return fig
 
 
-_SIDE_ORDER = ["bottom", "right", "left", "top"]   # порядок trace'ов 1..4
-
-
 def _path_pts(coords, n=60):
     """n равномерно распределённых точек вдоль ломаной (для line+markers trace)."""
     segs, total = [], 0.0
@@ -471,11 +468,13 @@ def calc_geometry(b, h, t, s, m_kgm, A_cm2_table=None, R_mm=0.0):
     """Геометрические параметры I-балки для проектирования огнезащиты.
 
     Площадь — из сортамента (А, см²) или, если не задана, через погонную массу.
+    Обогрев всегда принимается по 3 сторонам (нижняя и обе боковые) — верхняя
+    полка балки примыкает к перекрытию и не обогревается.
 
     Каждая боковая сторона двутавра имеет 2 внутренних закруглённых угла
     (стык стенки с полкой). Острый угол заменяется дугой πR/2 вместо двух
-    прямых отрезков длиной R, поправка на угол: R(π/2 − 2) ≈ −0.43R.
-    Для всех схем, включающих боковые стороны, действуют 4 таких угла.
+    прямых отрезков длиной R, поправка на угол: R(π/2 − 2) ≈ −0.43R
+    (всего 4 таких угла на обе боковые стороны).
     """
     # Площадь
     if A_cm2_table is not None:
@@ -489,27 +488,19 @@ def calc_geometry(b, h, t, s, m_kgm, A_cm2_table=None, R_mm=0.0):
     fillet_4 = 4 * R * (math.pi / 2 - 2)   # отрицательная (~−1.72R)
 
     p_bot = b
-    p_top = b
     # Периметр двух боковых без учёта скруглений (острые углы)
     p_2sides_sharp = 2 * (h + b - s)
 
-    cases = [
-        ("1 — нижняя сторона",               p_bot),
-        ("2 — обе боковых стороны",           p_2sides_sharp + fillet_4),
-        ("3 — нижняя + обе боковых",          p_bot + p_2sides_sharp + fillet_4),
-        ("4 — все стороны",                   p_bot + p_top + p_2sides_sharp + fillet_4),
-    ]
-    rows = []
-    for label, u in cases:
-        u_m = u / 1000
-        rows.append({
-            "Схема обогрева":                label,
-            "Обогреваемый периметр, мм":     round(u, 1),
-            "Площадь пов-сти / 1 м,  м²/м": round(u_m, 4),
-            "Площадь пов-сти / т,  м²/т":   round(u_m * 1000 / m_kgm, 2),
-            "Привед. толщина δ,  мм":        round(A_mm2 / u, 2),
-        })
-    return A_mm2, A_cm2, pd.DataFrame(rows)
+    u = p_bot + p_2sides_sharp + fillet_4
+    u_m = u / 1000
+    geom_df = pd.DataFrame([{
+        "Схема обогрева":                "3 стороны (нижняя + обе боковых)",
+        "Обогреваемый периметр, мм":     round(u, 1),
+        "Площадь пов-сти / 1 м,  м²/м": round(u_m, 4),
+        "Площадь пов-сти / т,  м²/т":   round(u_m * 1000 / m_kgm, 2),
+        "Привед. толщина δ,  мм":        round(A_mm2 / u, 2),
+    }])
+    return A_mm2, A_cm2, geom_df
 
 
 _TEMP_COLS = ["Время (мин)", "Нижняя полка (°C)", "Стенка (°C)", "Верхняя полка (°C)"]
@@ -850,37 +841,10 @@ def main():
                     b_dim, h_dim, t_dim, s_dim,
                     selected_profile, st.session_state.heated_sides,
                 )
-                event = st.plotly_chart(
-                    fig_sec,
-                    on_select="rerun",
-                    selection_mode="points",
-                    key="section_fig",
-                    use_container_width=True,
-                )
-                # Обработка клика по стороне
-                sel_pts = (event.selection.points
-                           if (event and hasattr(event, "selection") and event.selection)
-                           else [])
-                if sel_pts:
-                    pt = sel_pts[0]
-                    if isinstance(pt, dict):
-                        cn = pt.get("curve_number", -1)
-                    else:
-                        cn = getattr(pt, "curve_number", -1)
-                    if 1 <= cn <= 4:
-                        side = _SIDE_ORDER[cn - 1]
-                        if side in st.session_state.heated_sides:
-                            st.session_state.heated_sides.discard(side)
-                        else:
-                            st.session_state.heated_sides.add(side)
-                    # Сброс состояния виджета — при следующем рендере клик не повторится
-                    if "section_fig" in st.session_state:
-                        del st.session_state["section_fig"]
-                    st.rerun()
-                cnt = len(st.session_state.heated_sides)
+                st.plotly_chart(fig_sec, use_container_width=True)
                 st.caption(
-                    f"Обогревается {cnt} из 4 сторон  ·  "
-                    "Нажмите на контур сечения для переключения"
+                    "Обогрев с 3 сторон (нижняя и обе боковые) — верхняя полка балки "
+                    "примыкает к перекрытию и не обогревается."
                 )
             else:
                 st.info("Размеры сечения недоступны.")
@@ -970,20 +934,8 @@ def main():
 
             st.divider()
             st.subheader("Обогреваемый периметр и производные величины")
+            st.caption("Обогрев принят по 3 сторонам (нижняя и обе боковые) — для балок верхняя полка примыкает к перекрытию.")
             st.dataframe(geom_df, hide_index=True, use_container_width=True)
-
-            # Подсветка текущей схемы обогрева
-            n_h = len(st.session_state.heated_sides)
-            if 1 <= n_h <= 4:
-                labels = ["сторона", "стороны", "стороны", "стороны"]
-                row = geom_df.iloc[n_h - 1]
-                st.info(
-                    f"**Текущая схема ({n_h} {labels[n_h - 1]}, вкладка «Несущая способность»):**  "
-                    f"периметр = **{row['Обогреваемый периметр, мм']:.0f} мм** · "
-                    f"пов-сть / 1 м = **{row['Площадь пов-сти / 1 м,  м²/м']:.4f} м²/м** · "
-                    f"пов-сть / т = **{row['Площадь пов-сти / т,  м²/т']:.2f} м²/т** · "
-                    f"δ = **{row['Привед. толщина δ,  мм']:.2f} мм**"
-                )
 
             r_note = (f"Учтены скругления R = {R_dim:.0f} мм: поправка на 4 угла = "
                       f"{4 * float(R_dim) * (math.pi / 2 - 2):.1f} мм.  "
@@ -1050,7 +1002,7 @@ def main():
                     )
                 _gamma_cmp_res = compute_bending_gamma(
                     db, selected_grade, _ry0_cmp, res.applied_moment_value, _gamma_default_shear_kn(),
-                    exposure="4_sides", gamma_c=1.0, max_time_min=_max_minutes_cmp,
+                    exposure="3_sides", gamma_c=1.0, max_time_min=_max_minutes_cmp,
                     profile=_profile_row_cmp, dims=_dims_cmp,
                 )
                 _cmp_scenarios.append((
@@ -1068,7 +1020,7 @@ def main():
                 "Кривая «γT (равномерный прогрев)» — альтернативная методика (вкладка "
                 "«Метод γT») с той же нагрузкой и маркой стали: Ryn берётся из таблицы "
                 "прочности стали, поперечная сила Q — как опорная реакция P/2 + qL/2, "
-                "обогрев принят по всем 4 сторонам."
+                "обогрев принят по 3 сторонам (как и на других вкладках)."
             )
 
         if _cmp_scenarios:
@@ -1200,9 +1152,9 @@ def main():
                     key=f"m_gamma_input_{_key_suffix}",
                     help="По умолчанию — момент от нагрузки с боковой панели (P, L, собственный вес).",
                 )
-                exposure_gamma = st.radio(
-                    "Обогрев сечения", ["4 стороны", "3 стороны"],
-                    horizontal=True, key="exposure_gamma",
+                gamma_c_gamma = st.number_input(
+                    "Коэффициент условий работы γc",
+                    min_value=0.1, value=1.0, step=0.05, format="%.2f", key="gamma_c_gamma",
                 )
             with col_load2:
                 _q_default = _gamma_default_shear_kn()
@@ -1213,10 +1165,6 @@ def main():
                     help="По умолчанию — опорная реакция Q = P/2 + qL/2 при нагрузке "
                          "в середине пролёта и собственном весе q = M(кг/м)·g.",
                 )
-                gamma_c_gamma = st.number_input(
-                    "Коэффициент условий работы γc",
-                    min_value=0.1, value=1.0, step=0.05, format="%.2f", key="gamma_c_gamma",
-                )
 
             _ry0 = float(db.get_strength_data()[selected_grade].iloc[0])
             ry_gamma = st.number_input(
@@ -1225,8 +1173,12 @@ def main():
                 key=f"ry_gamma_input_{selected_grade}",
                 help="По умолчанию — предел текучести марки стали при 20 °C из prochnost.json.",
             )
+            st.caption(
+                "Обогрев принят по 3 сторонам (нижняя и обе боковые) — верхняя полка "
+                "балки примыкает к перекрытию и не обогревается."
+            )
 
-            _exposure_code = "4_sides" if exposure_gamma == "4 стороны" else "3_sides"
+            _exposure_code = "3_sides"
 
             _profile_row, _dims_gamma = _gamma_profile_args()
 
@@ -1346,12 +1298,8 @@ def main():
                 with st.expander("2. Теплотехническая задача — приведённая толщина и прогрев", expanded=True):
                     st.markdown("Обогреваемый периметр и приведённая толщина металла:")
                     h_g, b_g, tw_g = gamma_res.geometry["h"], gamma_res.geometry["b"], gamma_res.geometry["tw"]
-                    if _exposure_code == "4_sides":
-                        p_formula = r"2h + 4b - 2t_w"
-                        p_subst = fr"2 \cdot {h_g:.0f} + 4 \cdot {b_g:.0f} - 2 \cdot {tw_g:.1f}"
-                    else:
-                        p_formula = r"2h + 3b - 2t_w"
-                        p_subst = fr"2 \cdot {h_g:.0f} + 3 \cdot {b_g:.0f} - 2 \cdot {tw_g:.1f}"
+                    p_formula = r"2h + 3b - 2t_w"
+                    p_subst = fr"2 \cdot {h_g:.0f} + 3 \cdot {b_g:.0f} - 2 \cdot {tw_g:.1f}"
                     st.latex(
                         fr"\delta_{{np}} = \frac{{A}}{{\Pi}} = \frac{{A}}{{{p_formula}}} = "
                         fr"\frac{{{gamma_res.geometry['A']:.0f}}}{{{p_subst}}} = "
