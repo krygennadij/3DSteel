@@ -29,7 +29,19 @@
       "Bash(git push *)",
       "Bash(PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python \"C:\\\\Users\\\\kryge\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--YandexDisk-02-PROJECT-Python-steel-Steel\\\\0d12af39-cff2-4d05-9dd7-44534b23b15d\\\\scratchpad\\\\gen_sample_xlsx.py\")",
       "Bash(git fetch *)",
-      "Bash(.venv/Scripts/python.exe -c ' *)"
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(gh api *)",
+      "Bash(curl -s -L https://raw.githubusercontent.com/krygennadij/fireresiscience/main/app.py -o /tmp/fireresiscience_app.py)",
+      "Bash(rm -rf fireresiscience)",
+      "Bash(curl -s -L https://github.com/krygennadij/fireresiscience/archive/refs/heads/main.tar.gz -o fireres.tar.gz)",
+      "Bash(tar -xzf fireres.tar.gz)",
+      "Bash(ls fireresiscience-main/src)",
+      "Bash(.venv/Scripts/python.exe tests/test_calc_gamma.py)",
+      "Bash(export PYTHONIOENCODING=utf-8)",
+      "Bash(.venv/Scripts/python.exe .claude/skills/run-steel/driver.py smoke main.py --load 2000 --length 6)",
+      "Bash(.venv/Scripts/python.exe -m py_compile main.py)",
+      "Bash(.venv/Scripts/python.exe /tmp/shot_gamma2.py)",
+      "Bash(.venv/Scripts/python.exe tests/test_calc.py)"
     ]
   }
 }

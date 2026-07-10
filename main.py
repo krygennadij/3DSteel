@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from calc import SteelDatabase, FireCalcResult, compute
+from calc_gamma import compute_bending_gamma
 from report import make_word_report, make_excel_report
 
 _OGZ_EXCEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "температура с ОГЗ.xlsx")
@@ -142,6 +143,64 @@ def make_chart(res: FireCalcResult) -> go.Figure:
         font=dict(size=13),
         margin=dict(t=20, b=15, l=70, r=20),
         height=600,
+    )
+    return fig
+
+
+def make_gamma_chart(res, max_time_min: float) -> go.Figure:
+    """График нагрева для методики γ_T: газовая среда vs равномерная температура
+    стали, с отметкой предела огнестойкости в точке пересечения с t_cr."""
+    df = res.history
+    t_arr = df["Время, мин"].to_numpy(dtype=float)
+    gas = df["Газовая среда, °C"].to_numpy(dtype=float)
+    steel = df["Сталь (равномерный прогрев), °C"].to_numpy(dtype=float)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=t_arr, y=gas, mode="lines", name="Стандартный режим пожара, °C",
+        line=dict(color="#e60000", width=3),
+        hovertemplate="%{x:.1f} мин — %{y:.0f} °C<extra>Газовая среда</extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=t_arr, y=steel, mode="lines", name="Температура стали, °C",
+        line=dict(color="#0055cc", width=3, dash="dash"),
+        hovertemplate="%{x:.1f} мин — %{y:.0f} °C<extra>Сталь</extra>",
+    ))
+
+    limit = res.fire_limit_minute
+    if limit is not None and limit <= t_arr[-1]:
+        fig.add_vline(x=limit, line=dict(color="black", width=1, dash="dot"))
+        fig.add_hline(y=res.critical_temp, line=dict(color="black", width=1, dash="dot"))
+        fig.add_trace(go.Scatter(
+            x=[limit], y=[res.critical_temp], mode="markers",
+            marker=dict(color="#e74c3c", size=10, line=dict(color="white", width=1)),
+            showlegend=False,
+        ))
+        fig.add_annotation(
+            x=limit, y=0, yanchor="bottom",
+            text=f"t<sub>пред</sub> = {limit:.1f} мин",
+            showarrow=False, font=dict(size=11, color="black"), bgcolor="white",
+        )
+
+    GRID = dict(showgrid=True, gridwidth=1, gridcolor="rgba(0,0,0,0.12)",
+                ticks="inside", ticklen=6,
+                showline=True, linewidth=1.5, linecolor="black",
+                mirror=True, tickfont=dict(size=13))
+
+    y_max = max(1000.0, float(gas.max()) * 1.05)
+
+    fig.update_layout(
+        template="simple_white",
+        xaxis=dict(title=dict(text="Время, мин", font=dict(size=14)),
+                   range=[0, max_time_min], **GRID),
+        yaxis=dict(title=dict(text="Температура, °C", font=dict(size=14)),
+                   range=[0, y_max], **GRID),
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.18,
+                    xanchor="center", x=0.5, font=dict(size=13)),
+        font=dict(size=13),
+        margin=dict(t=20, b=15, l=70, r=20),
+        height=550,
     )
     return fig
 
@@ -708,9 +767,9 @@ def main():
         "Параметры — в боковой панели слева."
     )
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Несущая способность", "📐 Параметры огнезащиты",
-        "📈 Сравнение ОГЗ", "📄 Отчёт",
+        "📈 Сравнение ОГЗ", "📄 Отчёт", "🧮 Метод γ_T",
     ])
 
     with tab1:
@@ -1059,6 +1118,205 @@ def main():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
                 )
+
+    # ── Вкладка 5: Альтернативная методика γ_T ──────────────────────────────
+    with tab5:
+        st.subheader("Метод γ_T: критическая температура стали (СП 16.13330)")
+        st.caption(
+            "Альтернативная методика (по мотивам "
+            "[fireresiscience](https://github.com/krygennadij/fireresiscience)): "
+            "сечение прогревается равномерно по всей площади — без разделения на "
+            "три зоны, как на вкладке «Несущая способность». Скорость нагрева "
+            "определяется приведённой толщиной металла δnp = A / П. Предел "
+            "огнестойкости — момент, когда температура стали достигает "
+            "критической t_cr, при которой несущая способность сечения "
+            "сравнивается с расчётным усилием."
+        )
+
+        if not has_dims:
+            st.warning("Геометрические данные сечения недоступны для этого профиля.")
+        else:
+            # Ключи виджетов зависят от параметров, задающих значение по умолчанию:
+            # у виджета Streamlit с фиксированным key аргумент value игнорируется
+            # после первого рендера, поэтому без этого суффикса поля M/Q/Ryn не
+            # подхватывали бы изменение нагрузки/пролёта/профиля/марки стали.
+            _key_suffix = f"{selected_doc}_{selected_profile}_{selected_grade}_{load_value}_{length_value}"
+
+            col_load1, col_load2 = st.columns(2)
+            with col_load1:
+                _m_default = float(round(res.applied_moment_value, 3)) if inputs_ok else 0.0
+                m_gamma = st.number_input(
+                    "Изгибающий момент M, кН·м",
+                    min_value=0.0, value=_m_default, step=1.0, format="%.3f",
+                    key=f"m_gamma_input_{_key_suffix}",
+                    help="По умолчанию — момент от нагрузки с боковой панели (P, L, собственный вес).",
+                )
+                exposure_gamma = st.radio(
+                    "Обогрев сечения", ["4 стороны", "3 стороны"],
+                    horizontal=True, key="exposure_gamma",
+                )
+            with col_load2:
+                _q_default = 0.0
+                if inputs_ok:
+                    _q_default = (load_value * 9.80665e-3) / 2.0 + (m_dim * length_value * 9.80665e-3) / 2.0
+                q_gamma = st.number_input(
+                    "Поперечная сила Q, кН",
+                    min_value=0.0, value=float(round(_q_default, 3)), step=1.0, format="%.3f",
+                    key=f"q_gamma_input_{_key_suffix}",
+                    help="По умолчанию — опорная реакция Q = P/2 + qL/2 при нагрузке "
+                         "в середине пролёта и собственном весе q = M(кг/м)·g.",
+                )
+                gamma_c_gamma = st.number_input(
+                    "Коэффициент условий работы γc",
+                    min_value=0.1, value=1.0, step=0.05, format="%.2f", key="gamma_c_gamma",
+                )
+
+            _ry0 = float(db.get_strength_data()[selected_grade].iloc[0])
+            ry_gamma = st.number_input(
+                "Нормативное сопротивление Ryn, МПа",
+                min_value=1.0, value=_ry0, step=1.0, format="%.1f",
+                key=f"ry_gamma_input_{selected_grade}",
+                help="По умолчанию — предел текучести марки стали при 20 °C из prochnost.json.",
+            )
+
+            _exposure_code = "4_sides" if exposure_gamma == "4 стороны" else "3_sides"
+
+            _profile_row = None
+            _dims_gamma = None
+            if custom_profile is not None:
+                _dims_gamma = {"h": h_dim, "b": b_dim, "tf": t_dim, "tw": s_dim}
+            else:
+                _profile_row = db.get_profile_data(selected_doc).loc[selected_profile].squeeze()
+
+            gamma_res = None
+            try:
+                gamma_res = compute_bending_gamma(
+                    db, selected_grade, ry_gamma, m_gamma, q_gamma,
+                    exposure=_exposure_code, gamma_c=gamma_c_gamma,
+                    profile=_profile_row, dims=_dims_gamma,
+                )
+            except ValueError as e:
+                st.error(str(e))
+
+            if gamma_res is not None:
+                st.divider()
+                limit_g = gamma_res.fire_limit_minute
+                mc1, mc2, mc3, mc4 = st.columns(4)
+                mc1.metric(
+                    "γ_T", f"{gamma_res.gamma_t:.4f}",
+                    help="Коэффициент использования несущей способности при 20 °C "
+                         "(худший случай: изгиб или сдвиг)",
+                )
+                mc2.metric("Критическая температура", f"{gamma_res.critical_temp:.0f} °C")
+                mc3.metric(
+                    "Предел огнестойкости",
+                    f"{limit_g:.1f} мин" if limit_g is not None else "> 60 мин",
+                )
+                mc4.metric("Приведённая толщина δnp", f"{gamma_res.delta_np_mm:.2f} мм")
+
+                col_chart_g, col_info_g = st.columns([2, 1])
+                with col_chart_g:
+                    st.plotly_chart(make_gamma_chart(gamma_res, 60.0), width="stretch")
+                    st.caption(
+                        "Сплошная линия — стандартный температурный режим пожара. "
+                        "Пунктирная линия — расчётная (равномерная) температура стали. "
+                        "Точка пересечения с критической температурой — предел огнестойкости."
+                    )
+
+                with col_info_g:
+                    geo = gamma_res.geometry
+                    st.markdown("**Геометрические характеристики**")
+                    st.table(pd.DataFrame({
+                        "Величина": ["Af, мм²", "Aw, мм²", "Wx, см³", "Ix, см⁴", "Sx, см³", "tw, мм"],
+                        "Значение": [
+                            f"{geo['Af']:.0f}", f"{geo['Aw']:.0f}",
+                            f"{geo['Wx'] / 1e3:.1f}", f"{geo['Ix'] / 1e4:.0f}",
+                            f"{geo['Sx'] / 1e3:.1f}", f"{geo['tw']:.1f}",
+                        ],
+                    }).set_index("Величина"))
+
+                with st.expander("1. Прочностная задача — коэффициент γ_T", expanded=True):
+                    af, aw = gamma_res.geometry["Af"], gamma_res.geometry["Aw"]
+                    n_ratio = af / aw if aw > 0 else 0.0
+
+                    st.markdown("**Коэффициент c₁** (учёт развития пластических деформаций, Табл. Е.1 СП 16.13330):")
+                    st.latex(
+                        fr"n = \frac{{A_f}}{{A_w}} = \frac{{{af:.0f}}}{{{aw:.0f}}} = {n_ratio:.2f}"
+                        fr"\quad\Rightarrow\quad c_1 = {gamma_res.c1:.3f}"
+                    )
+
+                    st.markdown("**Изгиб:**")
+                    wx_m3 = gamma_res.geometry["Wx"] * 1e-9
+                    st.latex(
+                        r"\gamma_T = \frac{M}{c_1 \cdot W_x \cdot R_{yn} \cdot \gamma_c} = "
+                        fr"\frac{{{abs(m_gamma) * 1000:.0f}}}{{{gamma_res.c1:.3f} \cdot "
+                        fr"{wx_m3:.3e} \cdot {ry_gamma * 1e6:.3e} \cdot {gamma_c_gamma:.2f}}} = "
+                        fr"\mathbf{{{gamma_res.gamma_bending:.4f}}}"
+                    )
+
+                    st.markdown("**Сдвиг:**")
+                    sx_m3 = gamma_res.geometry["Sx"] * 1e-9
+                    ix_m4 = gamma_res.geometry["Ix"] * 1e-12
+                    tw_m = gamma_res.geometry["tw"] * 1e-3
+                    st.latex(
+                        r"\gamma_T = \frac{Q \cdot S_x}{I_x \cdot t_w \cdot 0{,}58 R_{yn} \cdot \gamma_c} = "
+                        fr"\frac{{{abs(q_gamma) * 1000:.0f} \cdot {sx_m3:.3e}}}{{{ix_m4:.3e} \cdot "
+                        fr"{tw_m:.3e} \cdot 0{{,}}58 \cdot {ry_gamma * 1e6:.3e} \cdot {gamma_c_gamma:.2f}}} = "
+                        fr"\mathbf{{{gamma_res.gamma_shear:.4f}}}"
+                    )
+
+                    st.latex(
+                        fr"\gamma_T = \max(\gamma_{{T,изгиб}}, \gamma_{{T,сдвиг}}) = "
+                        fr"\max({gamma_res.gamma_bending:.4f}, {gamma_res.gamma_shear:.4f}) = "
+                        fr"\mathbf{{{gamma_res.gamma_t:.4f}}}"
+                    )
+
+                    st.markdown("**Критическая температура** (обратная интерполяция по таблице прочности стали):")
+                    trace = gamma_res.critical_temp_trace
+                    if trace:
+                        st.latex(
+                            r"t_{cr} = T_1 + \frac{\gamma_T - \gamma_1}{\gamma_2 - \gamma_1}(T_2 - T_1) = "
+                            fr"{trace['t1']:.0f} + \frac{{{gamma_res.gamma_t:.4f} - {trace['g1']:.3f}}}"
+                            fr"{{{trace['g2']:.3f} - {trace['g1']:.3f}}}({trace['t2']:.0f} - {trace['t1']:.0f}) = "
+                            fr"\mathbf{{{gamma_res.critical_temp:.1f}}}\ ^\circ C"
+                        )
+                    elif gamma_res.gamma_t >= 1.0:
+                        st.write(
+                            "γ_T ≥ 1,0 — несущая способность исчерпана уже при 20 °C, "
+                            "критическая температура принимается равной начальной."
+                        )
+                    else:
+                        st.write(
+                            f"γ_T = {gamma_res.gamma_t:.4f} выходит за пределы таблицы прочности — "
+                            f"принята граничная температура t_cr = {gamma_res.critical_temp:.0f} °C."
+                        )
+
+                with st.expander("2. Теплотехническая задача — приведённая толщина и прогрев", expanded=True):
+                    st.markdown("Обогреваемый периметр и приведённая толщина металла:")
+                    h_g, b_g, tw_g = gamma_res.geometry["h"], gamma_res.geometry["b"], gamma_res.geometry["tw"]
+                    if _exposure_code == "4_sides":
+                        p_formula = r"2h + 4b - 2t_w"
+                        p_subst = fr"2 \cdot {h_g:.0f} + 4 \cdot {b_g:.0f} - 2 \cdot {tw_g:.1f}"
+                    else:
+                        p_formula = r"2h + 3b - 2t_w"
+                        p_subst = fr"2 \cdot {h_g:.0f} + 3 \cdot {b_g:.0f} - 2 \cdot {tw_g:.1f}"
+                    st.latex(
+                        fr"\delta_{{np}} = \frac{{A}}{{\Pi}} = \frac{{A}}{{{p_formula}}} = "
+                        fr"\frac{{{gamma_res.geometry['A']:.0f}}}{{{p_subst}}} = "
+                        fr"\frac{{{gamma_res.geometry['A']:.0f}}}{{{gamma_res.perimeter_mm:.0f}}} = "
+                        fr"\mathbf{{{gamma_res.delta_np_mm:.2f}}}\ \text{{мм}}"
+                    )
+                    st.caption(
+                        "Нагрев стали моделируется явной схемой по 1 сек. по стандартному "
+                        "температурному режиму пожара (ГОСТ 30247.0), без учёта огнезащиты."
+                    )
+
+                    csv_g = gamma_res.history.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "📊 Скачать историю нагрева (CSV)", csv_g,
+                        file_name=f"нагрев_gamma_{selected_profile}_{selected_grade}.csv",
+                        mime="text/csv",
+                    )
 
 
 if __name__ == "__main__":
