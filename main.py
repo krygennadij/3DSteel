@@ -364,7 +364,7 @@ def make_section_figure(b: float, h: float, t: float, s: float, label: str,
     # ── Видимая обводка сторон — прямоугольники по каждому осепараллельному
     # отрезку контура, с прямыми (не скруглёнными) углами на стыке полки и
     # стенки, в отличие от обводки толстой линией.
-    heated_hw = max(min(t, s) * 0.28, min(hb, hh) * 0.012)
+    heated_hw = max(min(t, s) * 0.14, min(hb, hh) * 0.006)
     cold_hw   = max(min(t, s) * 0.08, min(hb, hh) * 0.004)
     for side_name, coords, _ in SIDES:
         heated = side_name in heated_sides
