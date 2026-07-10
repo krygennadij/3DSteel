@@ -52,7 +52,14 @@
       "Bash(.venv/Scripts/python.exe .claude/skills/run-steel/driver.py smoke main.py --load 2000 --length 6 --doc \"ГОСТ 26020-83\" --profile \"20Б1\" --grade \"С345\")",
       "Bash(.venv/Scripts/python.exe /tmp/debug_gamma.py)",
       "Bash(rm -f \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_check1.png\" \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_check2.png\" \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_check3.png\" \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_check4.png\")",
-      "Bash(.venv/Scripts/python.exe /tmp/shot_check.py)"
+      "Bash(.venv/Scripts/python.exe /tmp/shot_check.py)",
+      "Bash(.venv/Scripts/python.exe -m py_compile report.py)",
+      "Bash('D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\.venv\\\\Scripts\\\\python.exe' -c ' *)",
+      "Bash(rm -rf /tmp/xlsx_extract2)",
+      "Bash(mkdir -p /tmp/xlsx_extract2)",
+      "Bash(unzip -q \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_test_report2.xlsx\")",
+      "Bash(rm -f \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_test_report.xlsx\" \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_test_report2.xlsx\" \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_test_report.docx\")",
+      "Bash(rm -rf /tmp/xlsx_extract /tmp/xlsx_extract2)"
     ]
   }
 }

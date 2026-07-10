@@ -984,8 +984,12 @@ def _nice_major_unit(max_value: float, target_ticks: int = 15):
     return step, axis_max
 
 
-def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
-    """Создаёт нативный Excel ScatterChart (Точечная с гладкими кривыми)."""
+def _make_capacity_chart(ws_data, n_rows: int, cross_point: tuple = None) -> ScatterChart:
+    """Создаёт нативный Excel ScatterChart (Точечная с гладкими кривыми).
+
+    cross_point — (x, y) точки пересечения несущей способности и момента от
+    нагрузки; если задана, вниз от неё до оси X рисуется тонкая штриховая
+    линия того же цвета, что и линия несущей способности."""
     chart = ScatterChart()
     chart.title  = None
     chart.style  = 10
@@ -1019,9 +1023,30 @@ def _make_capacity_chart(ws_data, n_rows: int) -> ScatterChart:
     s1.marker = Marker(symbol="none")
     s1.graphicalProperties.line.solidFill = "0055CC"
     s1.graphicalProperties.line.width = 25000
-    s1.graphicalProperties.line.dashDot = "dash"
+    s1.graphicalProperties.line.prstDash = "dash"
     s1.smooth = True
     chart.series.append(s1)
+
+    # Серия 3: перпендикуляр в точке пересечения несущей способности и момента
+    # от нагрузки — тонкая штриховая линия того же цвета, что несущая
+    # способность, опускающаяся от точки пересечения вниз до оси X.
+    if cross_point is not None:
+        x_cross, y_cross = cross_point
+        vrow = n_rows + 3
+        ws_data.cell(row=vrow,     column=1, value=round(x_cross, 4))
+        ws_data.cell(row=vrow,     column=2, value=round(y_cross, 4))
+        ws_data.cell(row=vrow + 1, column=1, value=round(x_cross, 4))
+        ws_data.cell(row=vrow + 1, column=2, value=0)
+
+        v_x_ref = Reference(ws_data, min_col=1, min_row=vrow, max_row=vrow + 1)
+        v_y_ref = Reference(ws_data, min_col=2, max_col=2, min_row=vrow, max_row=vrow + 1)
+        s2 = Series(v_y_ref, v_x_ref, title="Предел огнестойкости")
+        s2.marker = Marker(symbol="none")
+        s2.graphicalProperties.line.solidFill = "E60000"
+        s2.graphicalProperties.line.width = 9525   # ~0.75pt — тоньше линии несущей способности (2pt)
+        s2.graphicalProperties.line.prstDash = "dash"
+        s2.smooth = False
+        chart.series.append(s2)
 
     # Основные линии сетки по обеим осям (в т.ч. вертикальные)
     chart.x_axis.majorGridlines = ChartLines()
@@ -1083,7 +1108,7 @@ def _make_comparison_chart_xl(ws_data, n_rows: int, series_colors: list) -> Scat
     s_mom.marker = Marker(symbol="none")
     s_mom.graphicalProperties.line.solidFill = "0055CC"
     s_mom.graphicalProperties.line.width = 25000
-    s_mom.graphicalProperties.line.dashDot = "dash"
+    s_mom.graphicalProperties.line.prstDash = "dash"
     s_mom.smooth = True
     chart.series.append(s_mom)
 
@@ -1194,7 +1219,15 @@ def make_excel_report(
     n_cap = len(cap_df)
     _xl_write_df(ws_cap, cap_df)
 
-    chart = _make_capacity_chart(ws_cap, n_cap)
+    cross_point = None
+    if limit is not None and limit > 0:
+        cap_arr = res.load_capacity["Несущая способность, кНм"].to_numpy(dtype=float)
+        y0 = cap_arr[limit - 1] if np.isfinite(cap_arr[limit - 1]) else mom + 1
+        y1 = cap_arr[limit] if limit < len(cap_arr) and np.isfinite(cap_arr[limit]) else mom - 1
+        x_cross = float(limit - 1) + (y0 - mom) / (y0 - y1) if y0 != y1 else float(limit)
+        cross_point = (x_cross, mom)
+
+    chart = _make_capacity_chart(ws_cap, n_cap, cross_point=cross_point)
     ws_cap.add_chart(chart, f"E2")
 
     # ── Лист 3: Температуры и прочность ──────────────────────────────────────
