@@ -42,7 +42,11 @@
       "Bash(.venv/Scripts/python.exe -m py_compile main.py)",
       "Bash(.venv/Scripts/python.exe /tmp/shot_gamma2.py)",
       "Bash(.venv/Scripts/python.exe tests/test_calc.py)",
-      "Bash(.venv/Scripts/python.exe -m py_compile main.py calc_gamma.py)"
+      "Bash(.venv/Scripts/python.exe -m py_compile main.py calc_gamma.py)",
+      "Bash(git commit *)",
+      "Bash(.venv/Scripts/python.exe .claude/skills/run-steel/driver.py smoke main.py --load 6057 --length 3.2 --doc \"Пользовательское сечение\")",
+      "Bash(.venv/Scripts/python.exe /tmp/shot_cmp.py)",
+      "Bash(.venv/Scripts/python.exe -m py_compile calc.py main.py report.py calc_gamma.py)"
     ]
   }
 }

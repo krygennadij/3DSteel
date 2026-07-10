@@ -14,8 +14,16 @@ import os
 import numpy as np
 import pandas as pd
 
+# Ускорение свободного падения, м/с² — единое для всего проекта: используется
+# и при переводе МПа в кгс/см², и при переводе усилий (кгс) в моменты (кН·м),
+# и при переводе нагрузки/массы (кг) в момент от нагрузки (кН·м). Раньше эти
+# переводы были рассогласованы (местами использовалось g≈10), из-за чего
+# несущая способность при 20°C отличалась от точного пластического момента
+# сечения (Ry·Wpl) примерно на 2% — единое g устраняет это расхождение.
+G = 9.81
+
 # Перевод МПа в кгс/см²
-MPA_TO_KGF_CM2 = 10.197162
+MPA_TO_KGF_CM2 = 100.0 / G
 
 
 class SteelDatabase:
@@ -244,11 +252,12 @@ def compute(db: SteelDatabase, doc: str, profile_key: str, grade: str,
             "Плечо равнодействующей силы сжатия в верхней полке, мм": arm_compression_upper,
         })
 
-        # 7. Изгибающие моменты, кНм
-        moment_lower = tensile_lower * arm_tensile_lower * 0.00001
-        moment_web = tensile_web * arm_tensile_web * 0.00001
-        moment_upper_web = compression_web * arm_compression_web * 0.00001
-        moment_upper = compression_upper * arm_compression_upper * 0.00001
+        # 7. Изгибающие моменты, кНм. Перевод кгс·мм -> кН·м: 1 кгс·мм = G·10⁻⁶ кН·м.
+        _KGF_MM_TO_KNM = G * 1e-6
+        moment_lower = tensile_lower * arm_tensile_lower * _KGF_MM_TO_KNM
+        moment_web = tensile_web * arm_tensile_web * _KGF_MM_TO_KNM
+        moment_upper_web = compression_web * arm_compression_web * _KGF_MM_TO_KNM
+        moment_upper = compression_upper * arm_compression_upper * _KGF_MM_TO_KNM
 
         bending_moments = pd.DataFrame({
             "Время, мин": minutes,
@@ -268,11 +277,12 @@ def compute(db: SteelDatabase, doc: str, profile_key: str, grade: str,
 
     # 9. Момент от нагрузки в середине пролёта с учётом собственного веса.
     # length_m — пролёт в МЕТРАХ.
-    # M_нагр = P·L/4, кг·м → кНм: умножить на g/1000 = 9.80665e-3
-    # M_своб = q·L²/8, кг·м → кНм: умножить на g≈10/1000 = 0.01
+    # M_нагр = P·L/4, кг·м → кНм: умножить на g/1000
+    # M_своб = q·L²/8, кг·м → кНм: умножить на g/1000
     if m is None:
         raise ValueError("Ошибка: данные о массе 'M, кг' не найдены в данных профиля.")
-    moment_value = (load_kg * length_m / 4) * 9.80665e-3 + (m * length_m ** 2 / 8) * 0.01
+    _KG_M_TO_KNM = G / 1000.0
+    moment_value = (load_kg * length_m / 4) * _KG_M_TO_KNM + (m * length_m ** 2 / 8) * _KG_M_TO_KNM
 
     applied_moment = pd.DataFrame({
         "Время, мин": minutes,

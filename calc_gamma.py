@@ -80,16 +80,25 @@ def geometry_from_dims(h: float, b: float, tf: float, tw: float) -> dict:
 
 # ── Прочностная задача: γ_T ──────────────────────────────────────────────────
 
-def calc_c1_coefficient(af: float, aw: float) -> dict:
-    """Коэффициент c1 (учёт развития пластических деформаций), Табл. Е.1
-    СП 16.13330. Линейная интерполяция между n = Af/Aw = 0.5 (c1 = 1.07)
-    и n = 1.0 (c1 = 1.12), с ограничением диапазоном [1.0; 1.2]."""
-    if aw <= 0:
-        return {"value": 1.0, "n": 0.0, "trace": None}
-    n = af / aw
-    c1 = 1.07 + (n - 0.5) * 0.1
-    c1 = min(max(c1, 1.0), 1.2)
-    return {"value": c1, "n": n, "trace": {"low": (0.5, 1.07), "high": (1.0, 1.12)}}
+def calc_c1_coefficient(geometry: dict) -> dict:
+    """Коэффициент c1 = Wpl/Wx (отношение пластического момента сопротивления
+    к упругому), учитывающий развитие пластических деформаций при изгибе.
+
+    Считается точно по геометрии двутавра (без учёта скруглений — как и
+    оценка площади сечения для произвольного профиля в этом проекте, т.е.
+    в небольшой запас прочности), а не по грубой линейной интерполяции
+    исходной методики (2 точки, откалиброванные по единственному эталонному
+    примеру: n = Af/Aw = 0.5 → c1 = 1.07, n = 1.0 → c1 = 1.12). Та
+    интерполяция игнорирует реальную зависимость формы сечения от пропорций
+    (h/b, tf/tw) и давала ошибку до ~10% на нестандартных (нетиповых)
+    сечениях — точная формула устраняет эту ошибку."""
+    h, b, tf, tw = geometry["h"], geometry["b"], geometry["tf"], geometry["tw"]
+    wx = geometry["Wx"]
+    if wx <= 0:
+        return {"value": 1.0, "wpl": 0.0, "trace": None}
+    wpl = b * tf * (h - tf) + tw * (h / 2.0 - tf) ** 2
+    c1 = wpl / wx
+    return {"value": c1, "wpl": wpl, "trace": {"wpl": wpl, "wx": wx}}
 
 
 def calc_gamma_bending(m_load_nm: float, wx_m3: float, ry_pa: float,
@@ -304,7 +313,7 @@ def compute_bending_gamma(
     else:
         raise ValueError("Не заданы геометрия сечения (profile или dims).")
 
-    c1_res = calc_c1_coefficient(geometry["Af"], geometry["Aw"])
+    c1_res = calc_c1_coefficient(geometry)
 
     ry_pa = ry_mpa * 1e6
     wx_m3 = geometry["Wx"] * 1e-9

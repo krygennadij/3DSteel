@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from calc import SteelDatabase, FireCalcResult, compute
+from calc import SteelDatabase, FireCalcResult, compute, G
 from calc_gamma import compute_bending_gamma, as_capacity_curve_result
 from report import make_word_report, make_excel_report
 
@@ -770,7 +770,8 @@ def main():
         середине пролёта и равномерном собственном весе балки."""
         if not inputs_ok:
             return 0.0
-        return (load_value * 9.80665e-3) / 2.0 + (m_dim * length_value * 9.80665e-3) / 2.0
+        _kg_to_kn = G / 1000.0
+        return (load_value * _kg_to_kn) / 2.0 + (m_dim * length_value * _kg_to_kn) / 2.0
 
     limit = res.fire_limit_minute
     cap0  = res.load_capacity["Несущая способность, кНм"].iloc[0]
@@ -1277,13 +1278,23 @@ def main():
                     }).set_index("Величина"))
 
                 with st.expander("1. Прочностная задача — коэффициент γ_T", expanded=True):
-                    af, aw = gamma_res.geometry["Af"], gamma_res.geometry["Aw"]
-                    n_ratio = af / aw if aw > 0 else 0.0
+                    geo0 = gamma_res.geometry
+                    wpl0 = gamma_res.c1_trace["wpl"] if gamma_res.c1_trace else 0.0
 
-                    st.markdown("**Коэффициент c₁** (учёт развития пластических деформаций, Табл. Е.1 СП 16.13330):")
+                    st.markdown(
+                        "**Коэффициент c₁ = Wpl / Wx** (отношение пластического момента "
+                        "сопротивления к упругому — точно по геометрии сечения, без учёта "
+                        "скруглений, т.е. с небольшим запасом прочности):"
+                    )
                     st.latex(
-                        fr"n = \frac{{A_f}}{{A_w}} = \frac{{{af:.0f}}}{{{aw:.0f}}} = {n_ratio:.2f}"
-                        fr"\quad\Rightarrow\quad c_1 = {gamma_res.c1:.3f}"
+                        r"W_{pl} = b \cdot t_f (h - t_f) + t_w \left(\frac{h}{2} - t_f\right)^2 = "
+                        fr"{geo0['b']:.0f} \cdot {geo0['tf']:.1f}({geo0['h']:.0f} - {geo0['tf']:.1f}) + "
+                        fr"{geo0['tw']:.1f}\left(\frac{{{geo0['h']:.0f}}}{{2}} - {geo0['tf']:.1f}\right)^2 = "
+                        fr"\mathbf{{{wpl0:.0f}}}\ \text{{мм}}^3"
+                    )
+                    st.latex(
+                        fr"c_1 = \frac{{W_{{pl}}}}{{W_x}} = \frac{{{wpl0:.0f}}}{{{geo0['Wx']:.0f}}} = "
+                        fr"\mathbf{{{gamma_res.c1:.3f}}}"
                     )
 
                     st.markdown("**Изгиб:**")

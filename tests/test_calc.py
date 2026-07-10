@@ -19,11 +19,16 @@ def get_db() -> SteelDatabase:
 
 
 def test_reference_case():
-    """Контрольный пример: ГОСТ 26020-83, 20Б1, С345, 2000 кг, 6 м."""
+    """Контрольный пример: ГОСТ 26020-83, 20Б1, С345, 2000 кг, 6 м.
+
+    Golden-значения обновлены после унификации ускорения свободного падения
+    (g = 9.81 м/с² везде — раньше кгс->кН·м переводился с g≈10, а МПа->кгс/см²
+    с g=9.80665, что давало систематическое расхождение ~2% с точным
+    пластическим моментом сечения Ry·Wpl)."""
     res = compute(get_db(), "ГОСТ 26020-83", "20Б1", "С345", 2000.0, 6.0)
     cap = res.load_capacity["Несущая способность, кНм"].to_numpy()
-    assert abs(cap[0] - 87.4415) < 1e-3, cap[0]
-    assert abs(res.applied_moment_value - 30.4280) < 1e-3, res.applied_moment_value
+    assert abs(cap[0] - 85.7508) < 1e-3, cap[0]
+    assert abs(res.applied_moment_value - 30.4188) < 1e-3, res.applied_moment_value
     assert res.fire_limit_minute == 22, res.fire_limit_minute
 
 

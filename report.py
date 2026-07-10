@@ -27,7 +27,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Inches, Pt, RGBColor
 
-from calc import FireCalcResult, MPA_TO_KGF_CM2
+from calc import FireCalcResult, MPA_TO_KGF_CM2, G
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -613,24 +613,25 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
 
     # 6. Изгибающие моменты и несущая способность
     doc.add_heading(f"{section_no}.6. Изгибающие моменты и несущая способность", level=2)
+    _kgf_mm_to_knm = G * 1e-6
     doc.add_paragraph(
         "Момент от каждого усилия — произведение усилия (кгс) на его плечо (мм); "
-        "множитель 0,00001 переводит кгс·мм в кН·м (g ≈ 10 м/с²):"
+        f"множитель {_kgf_mm_to_knm:.3g} переводит кгс·мм в кН·м (g = {G} м/с²):"
     ).runs[0].font.size = Pt(15)
     _feq(doc, _cat(_sym("M", "р.н"), _n(
-        f" = {_fnum(tensile_lower, 1)} · {_fnum(arm_tensile_lower)} · 0.00001 "
+        f" = {_fnum(tensile_lower, 1)} · {_fnum(arm_tensile_lower)} · {_kgf_mm_to_knm:.3g} "
         f"= {_fnum(moment_lower, 3)} кНм"
     )))
     _feq(doc, _cat(_sym("M", "р.ст"), _n(
-        f" = {_fnum(tensile_web, 1)} · {_fnum(arm_tensile_web)} · 0.00001 "
+        f" = {_fnum(tensile_web, 1)} · {_fnum(arm_tensile_web)} · {_kgf_mm_to_knm:.3g} "
         f"= {_fnum(moment_web, 3)} кНм"
     )))
     _feq(doc, _cat(_sym("M", "сж.ст"), _n(
-        f" = {_fnum(compression_web, 1)} · {_fnum(arm_compression_web)} · 0.00001 "
+        f" = {_fnum(compression_web, 1)} · {_fnum(arm_compression_web)} · {_kgf_mm_to_knm:.3g} "
         f"= {_fnum(moment_upper_web, 3)} кНм"
     )))
     _feq(doc, _cat(_sym("M", "сж.в"), _n(
-        f" = {_fnum(compression_upper, 1)} · {_fnum(arm_compression_upper)} · 0.00001 "
+        f" = {_fnum(compression_upper, 1)} · {_fnum(arm_compression_upper)} · {_kgf_mm_to_knm:.3g} "
         f"= {_fnum(moment_upper, 3)} кНм"
     )))
     _feq(doc, _cat(_sym("M", "нес"), _n(" = "),
@@ -646,18 +647,19 @@ def _add_methodology_section(doc: Document, section_no: int, res: FireCalcResult
         "Момент в середине пролёта от сосредоточенной нагрузки P и от собственного "
         "веса балки q = m·g (не зависит от времени пожара):"
     ).runs[0].font.size = Pt(15)
+    _kg_to_knm = G / 1000.0
     _feq(doc, _cat(
         _sym("M", "нагр"), _n(" = "),
-        _frac(_n("P·L"), _n("4")), _n("·9.80665·10⁻³ + "),
-        _frac(_n("q·L²"), _n("8")), _n("·0.01"),
+        _frac(_n("P·L"), _n("4")), _n(f"·{_kg_to_knm:.3g} + "),
+        _frac(_n("q·L²"), _n("8")), _n(f"·{_kg_to_knm:.3g}"),
     ), italic=True)
     if m_kgm is not None:
-        term1 = (load_kg * length_m / 4) * 9.80665e-3
-        term2 = (m_kgm * length_m ** 2 / 8) * 0.01
+        term1 = (load_kg * length_m / 4) * _kg_to_knm
+        term2 = (m_kgm * length_m ** 2 / 8) * _kg_to_knm
         _feq(doc, _cat(
             _sym("M", "нагр"), _n(" = "),
-            _frac(_n(f"{load_kg:.1f}·{length_m:.2f}"), _n("4")), _n("·9.80665·10⁻³ + "),
-            _frac(_n(f"{m_kgm:.1f}·{length_m:.2f}²"), _n("8")), _n("·0.01"),
+            _frac(_n(f"{load_kg:.1f}·{length_m:.2f}"), _n("4")), _n(f"·{_kg_to_knm:.3g} + "),
+            _frac(_n(f"{m_kgm:.1f}·{length_m:.2f}²"), _n("8")), _n(f"·{_kg_to_knm:.3g}"),
             _n(f" = {term1:.3f} + {term2:.3f} = {mom_val:.3f} кНм"),
         ))
     else:
