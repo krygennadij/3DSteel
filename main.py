@@ -576,6 +576,7 @@ def main():
         profile_source = st.radio(
             "Источник сечения",
             ["Из сортамента", "Задать вручную"],
+            index=1,
             horizontal=True,
             help="Выбор готового двутавра по ГОСТ/СТО или ввод произвольных размеров сечения",
         )
@@ -596,16 +597,16 @@ def main():
         else:
             st.caption("Размеры двутаврового сечения")
             h_custom = st.number_input(
-                "Высота сечения h, мм", min_value=10.0, value=300.0, step=1.0, format="%.1f",
+                "Высота сечения h, мм", min_value=10.0, value=180.0, step=1.0, format="%.1f",
             )
             b_custom = st.number_input(
-                "Ширина полки b, мм", min_value=10.0, value=150.0, step=1.0, format="%.1f",
+                "Ширина полки b, мм", min_value=10.0, value=90.0, step=1.0, format="%.1f",
             )
             t_custom = st.number_input(
-                "Толщина полки t, мм", min_value=1.0, value=10.2, step=0.1, format="%.1f",
+                "Толщина полки t, мм", min_value=1.0, value=12.0, step=0.1, format="%.1f",
             )
             s_custom = st.number_input(
-                "Толщина стенки s, мм", min_value=1.0, value=6.5, step=0.1, format="%.1f",
+                "Толщина стенки s, мм", min_value=1.0, value=10.0, step=0.1, format="%.1f",
             )
             _area_est_mm2 = 2 * b_custom * t_custom + max(h_custom - 2 * t_custom, 0.0) * s_custom
             _m_est = _area_est_mm2 / 100.0 * 0.785  # площадь, см² × плотность стали 7850 кг/м³
@@ -634,7 +635,7 @@ def main():
         st.markdown("##### 3. Нагрузка и геометрия")
         load_value = st.number_input(
             "Нагрузка P, кг",
-            min_value=0.0, value=86865.0, step=100.0, format="%.1f",
+            min_value=0.0, value=6057.0, step=100.0, format="%.1f",
             help="Нормативная сосредоточенная нагрузка в середине пролёта",
         )
         length_value = st.number_input(
