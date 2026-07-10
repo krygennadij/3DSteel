@@ -46,7 +46,13 @@
       "Bash(git commit *)",
       "Bash(.venv/Scripts/python.exe .claude/skills/run-steel/driver.py smoke main.py --load 6057 --length 3.2 --doc \"Пользовательское сечение\")",
       "Bash(.venv/Scripts/python.exe /tmp/shot_cmp.py)",
-      "Bash(.venv/Scripts/python.exe -m py_compile calc.py main.py report.py calc_gamma.py)"
+      "Bash(.venv/Scripts/python.exe -m py_compile calc.py main.py report.py calc_gamma.py)",
+      "Bash(grep -v 'st\\\\.latex\\\\|fr\"\\\\\\\\\\\\|r\"\\\\\\\\\\\\\\\\')",
+      "Bash(grep -n '\"🧮 Метод γ_T\"\\\\|\"γ_T \\(равномерный прогрев\\)\"\\\\|Кривая метода γ_T\\\\|«γ_T \\(равномерный прогрев\\)»\\\\|«Метод γ_T»\\\\|\"Метод γ_T:\\\\|\"γ_T\", f\"\\\\|коэффициент γ_T\"\\\\|γ_T ≥ 1,0\\\\|γ_T = {gamma_res.gamma_t\\\\|критической t_cr\\\\|t_cr = {gamma_res.critical_temp' main.py)",
+      "Bash(.venv/Scripts/python.exe .claude/skills/run-steel/driver.py smoke main.py --load 2000 --length 6 --doc \"ГОСТ 26020-83\" --profile \"20Б1\" --grade \"С345\")",
+      "Bash(.venv/Scripts/python.exe /tmp/debug_gamma.py)",
+      "Bash(rm -f \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_check1.png\" \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_check2.png\" \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_check3.png\" \"D:\\\\YandexDisk\\\\02_PROJECT\\\\Python\\\\steel\\\\Steel\\\\scratchpad_check4.png\")",
+      "Bash(.venv/Scripts/python.exe /tmp/shot_check.py)"
     ]
   }
 }

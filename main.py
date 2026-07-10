@@ -148,8 +148,8 @@ def make_chart(res: FireCalcResult) -> go.Figure:
 
 
 def make_gamma_chart(res, max_time_min: float) -> go.Figure:
-    """График нагрева для методики γ_T: газовая среда vs равномерная температура
-    стали, с отметкой предела огнестойкости в точке пересечения с t_cr."""
+    """График нагрева для методики γT: газовая среда vs равномерная температура
+    стали, с отметкой предела огнестойкости в точке пересечения с tcr."""
     df = res.history
     t_arr = df["Время, мин"].to_numpy(dtype=float)
     gas = df["Газовая среда, °C"].to_numpy(dtype=float)
@@ -785,7 +785,7 @@ def main():
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Несущая способность", "📐 Параметры огнезащиты",
-        "📈 Сравнение ОГЗ", "📄 Отчёт", "🧮 Метод γ_T",
+        "📈 Сравнение ОГЗ", "📄 Отчёт", "🧮 Метод γT",
     ])
 
     with tab1:
@@ -1054,7 +1054,7 @@ def main():
                     profile=_profile_row_cmp, dims=_dims_cmp,
                 )
                 _cmp_scenarios.append((
-                    "γ_T (равномерный прогрев)",
+                    "γT (равномерный прогрев)",
                     as_capacity_curve_result(_gamma_cmp_res),
                     "#8e44ad",
                 ))
@@ -1062,11 +1062,11 @@ def main():
                 _gamma_cmp_error = str(e)
 
         if _gamma_cmp_error:
-            st.warning(f"Кривая метода γ_T недоступна: {_gamma_cmp_error}")
+            st.warning(f"Кривая метода γT недоступна: {_gamma_cmp_error}")
         elif has_dims:
             st.caption(
-                "Кривая «γ_T (равномерный прогрев)» — альтернативная методика (вкладка "
-                "«Метод γ_T») с той же нагрузкой и маркой стали: Ryn берётся из таблицы "
+                "Кривая «γT (равномерный прогрев)» — альтернативная методика (вкладка "
+                "«Метод γT») с той же нагрузкой и маркой стали: Ryn берётся из таблицы "
                 "прочности стали, поперечная сила Q — как опорная реакция P/2 + qL/2, "
                 "обогрев принят по всем 4 сторонам."
             )
@@ -1170,7 +1170,7 @@ def main():
 
     # ── Вкладка 5: Альтернативная методика γ_T ──────────────────────────────
     with tab5:
-        st.subheader("Метод γ_T: критическая температура стали (СП 16.13330)")
+        st.subheader("Метод γT: критическая температура стали (СП 16.13330)")
         st.caption(
             "Альтернативная методика (по мотивам "
             "[fireresiscience](https://github.com/krygennadij/fireresiscience)): "
@@ -1178,7 +1178,7 @@ def main():
             "три зоны, как на вкладке «Несущая способность». Скорость нагрева "
             "определяется приведённой толщиной металла δnp = A / П. Предел "
             "огнестойкости — момент, когда температура стали достигает "
-            "критической t_cr, при которой несущая способность сечения "
+            "критической tcr, при которой несущая способность сечения "
             "сравнивается с расчётным усилием."
         )
 
@@ -1245,7 +1245,7 @@ def main():
                 limit_g = gamma_res.fire_limit_minute
                 mc1, mc2, mc3, mc4 = st.columns(4)
                 mc1.metric(
-                    "γ_T", f"{gamma_res.gamma_t:.4f}",
+                    "γT", f"{gamma_res.gamma_t:.4f}",
                     help="Коэффициент использования несущей способности при 20 °C "
                          "(худший случай: изгиб или сдвиг)",
                 )
@@ -1277,7 +1277,7 @@ def main():
                         ],
                     }).set_index("Величина"))
 
-                with st.expander("1. Прочностная задача — коэффициент γ_T", expanded=True):
+                with st.expander("1. Прочностная задача — коэффициент γT", expanded=True):
                     geo0 = gamma_res.geometry
                     wpl0 = gamma_res.c1_trace["wpl"] if gamma_res.c1_trace else 0.0
 
@@ -1334,13 +1334,13 @@ def main():
                         )
                     elif gamma_res.gamma_t >= 1.0:
                         st.write(
-                            "γ_T ≥ 1,0 — несущая способность исчерпана уже при 20 °C, "
+                            "γT ≥ 1,0 — несущая способность исчерпана уже при 20 °C, "
                             "критическая температура принимается равной начальной."
                         )
                     else:
                         st.write(
-                            f"γ_T = {gamma_res.gamma_t:.4f} выходит за пределы таблицы прочности — "
-                            f"принята граничная температура t_cr = {gamma_res.critical_temp:.0f} °C."
+                            f"γT = {gamma_res.gamma_t:.4f} выходит за пределы таблицы прочности — "
+                            f"принята граничная температура tcr = {gamma_res.critical_temp:.0f} °C."
                         )
 
                 with st.expander("2. Теплотехническая задача — приведённая толщина и прогрев", expanded=True):
@@ -1367,6 +1367,57 @@ def main():
                     st.download_button(
                         "📊 Скачать историю нагрева (CSV)", csv_g,
                         file_name=f"нагрев_gamma_{selected_profile}_{selected_grade}.csv",
+                        mime="text/csv",
+                    )
+
+                with st.expander("3. Несущая способность во времени", expanded=True):
+                    st.markdown(
+                        "Несущая способность снижается пропорционально тому же коэффициенту "
+                        "k(t), что и в основной методике (вкладка «Несущая способность»): "
+                        "k(t) = Ry(T_стали(t)) / Ry(20°C). При 20°C она равна моменту, "
+                        "делённому на худший из коэффициентов γT (запас прочности сечения):"
+                    )
+                    m_abs = abs(m_gamma)
+                    m_cap0 = gamma_res.capacity_curve["Несущая способность, кНм"].iloc[0]
+                    st.latex(
+                        fr"M_{{cap}}(t) = \frac{{M}}{{\gamma_T}} \cdot k(t) = "
+                        fr"\frac{{{m_abs:.3f}}}{{{gamma_res.gamma_t:.4f}}} \cdot k(t) = "
+                        fr"{m_cap0:.2f} \cdot k(t)\ \text{{кН·м}}"
+                    )
+                    st.latex(
+                        fr"M_{{cap}}(0) = {m_cap0:.2f} \cdot k(0) = {m_cap0:.2f} \cdot 1 = "
+                        fr"\mathbf{{{m_cap0:.2f}}}\ \text{{кН·м}}"
+                    )
+
+                    limit_int = gamma_res.capacity_fire_limit_minute
+                    if limit_int is not None:
+                        cap_at_limit = gamma_res.capacity_curve["Несущая способность, кНм"].iloc[limit_int]
+                        k_at_limit = cap_at_limit / m_cap0 if m_cap0 > 0 else 0.0
+                        st.latex(
+                            fr"M_{{cap}}({limit_int}) = {m_cap0:.2f} \cdot k({limit_int}) = "
+                            fr"{m_cap0:.2f} \cdot {k_at_limit:.4f} = "
+                            fr"\mathbf{{{cap_at_limit:.2f}}}\ \text{{кН·м}}\ \ge\ M = "
+                            fr"{m_abs:.3f}\ \text{{кН·м}}"
+                        )
+                        st.caption(
+                            f"На {limit_int + 1}-й целой минуте несущая способность впервые "
+                            "опускается ниже момента от нагрузки — предел огнестойкости на "
+                            f"минутной сетке = {limit_int} мин (эта же кривая — на вкладке "
+                            "«Сравнение ОГЗ», рядом с трёхзонной методикой)."
+                        )
+                    else:
+                        st.caption(
+                            "В расчётном диапазоне несущая способность не опускается ниже "
+                            "момента от нагрузки."
+                        )
+
+                    st.dataframe(
+                        gamma_res.capacity_curve, hide_index=True, use_container_width=True, height=200,
+                    )
+                    csv_cap = gamma_res.capacity_curve.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "📊 Скачать несущую способность во времени (CSV)", csv_cap,
+                        file_name=f"несущая_способность_gamma_{selected_profile}_{selected_grade}.csv",
                         mime="text/csv",
                     )
 
