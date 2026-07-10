@@ -41,7 +41,8 @@
       "Bash(.venv/Scripts/python.exe .claude/skills/run-steel/driver.py smoke main.py --load 2000 --length 6)",
       "Bash(.venv/Scripts/python.exe -m py_compile main.py)",
       "Bash(.venv/Scripts/python.exe /tmp/shot_gamma2.py)",
-      "Bash(.venv/Scripts/python.exe tests/test_calc.py)"
+      "Bash(.venv/Scripts/python.exe tests/test_calc.py)",
+      "Bash(.venv/Scripts/python.exe -m py_compile main.py calc_gamma.py)"
     ]
   }
 }

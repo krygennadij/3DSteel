@@ -6,10 +6,14 @@
 import os
 import sys
 
+import numpy as np
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from calc import SteelDatabase  # noqa: E402
-from calc_gamma import compute_bending_gamma, get_critical_temperature  # noqa: E402
+from calc_gamma import (  # noqa: E402
+    compute_bending_gamma, get_critical_temperature, as_capacity_curve_result,
+)
 
 
 def get_db() -> SteelDatabase:
@@ -71,6 +75,31 @@ def test_custom_dims():
     )
     assert res.geometry["Wx"] > 0
     assert res.perimeter_mm > 0
+
+
+def test_capacity_curve_matches_gamma_t_and_moment():
+    """Кривая несущей способности: значение при 20°C = M/γ_T, монотонно убывает,
+    а момент пересечения (целая минута) согласован с непрерывным расчётом
+    (fire_limit_minute), в пределах шага 1 мин."""
+    db = get_db()
+    profile = db.get_profile_data("ГОСТ 26020-83").loc["20Б1"].squeeze()
+    ry0 = db.get_strength_data()["С345"].iloc[0]
+
+    res = compute_bending_gamma(
+        db, "С345", ry0, m_load_knm=15.963, q_load_kn=10.141,
+        exposure="4_sides", profile=profile, max_time_min=60,
+    )
+    cap = res.capacity_curve["Несущая способность, кНм"].to_numpy()
+
+    assert abs(cap[0] - (15.963 / res.gamma_t)) < 1e-6
+    assert (np.diff(cap) <= 1e-9).all()
+    assert res.capacity_fire_limit_minute is not None
+    assert abs(res.capacity_fire_limit_minute - res.fire_limit_minute) <= 1.0
+
+    cc = as_capacity_curve_result(res)
+    assert cc.applied_moment_value == 15.963
+    assert cc.fire_limit_minute == res.capacity_fire_limit_minute
+    assert list(cc.load_capacity.columns) == ["Время, мин", "Несущая способность, кНм"]
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from calc import SteelDatabase, FireCalcResult, compute
-from calc_gamma import compute_bending_gamma
+from calc_gamma import compute_bending_gamma, as_capacity_curve_result
 from report import make_word_report, make_excel_report
 
 _OGZ_EXCEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "температура с ОГЗ.xlsx")
@@ -757,6 +757,20 @@ def main():
         R_dim = profile_row.get("R, мм")    # внутренний радиус скругления
     has_dims = all(v is not None for v in (b_dim, h_dim, t_dim, s_dim))
 
+    def _gamma_profile_args():
+        """Геометрия для методики γ_T — тот же профиль/сечение, что выбран
+        в боковой панели (сортамент либо ручной ввод)."""
+        if custom_profile is not None:
+            return None, {"h": h_dim, "b": b_dim, "tf": t_dim, "tw": s_dim}
+        return db.get_profile_data(selected_doc).loc[selected_profile].squeeze(), None
+
+    def _gamma_default_shear_kn() -> float:
+        """Опорная реакция Q = P/2 + qL/2 при сосредоточенной нагрузке в
+        середине пролёта и равномерном собственном весе балки."""
+        if not inputs_ok:
+            return 0.0
+        return (load_value * 9.80665e-3) / 2.0 + (m_dim * length_value * 9.80665e-3) / 2.0
+
     limit = res.fire_limit_minute
     cap0  = res.load_capacity["Несущая способность, кНм"].iloc[0]
 
@@ -1022,6 +1036,39 @@ def main():
                 " (файл «температура с ОГЗ.xlsx» отсутствует или неполон)."
             )
 
+        _gamma_cmp_error = None
+        if has_dims and m_dim is not None:
+            try:
+                _profile_row_cmp, _dims_cmp = _gamma_profile_args()
+                _ry0_cmp = float(db.get_strength_data()[selected_grade].iloc[0])
+                _max_minutes_cmp = 60
+                if _cmp_scenarios:
+                    _max_minutes_cmp = max(
+                        60, int(max(_r.load_capacity["Время, мин"].max() for _, _r, _ in _cmp_scenarios))
+                    )
+                _gamma_cmp_res = compute_bending_gamma(
+                    db, selected_grade, _ry0_cmp, res.applied_moment_value, _gamma_default_shear_kn(),
+                    exposure="4_sides", gamma_c=1.0, max_time_min=_max_minutes_cmp,
+                    profile=_profile_row_cmp, dims=_dims_cmp,
+                )
+                _cmp_scenarios.append((
+                    "γ_T (равномерный прогрев)",
+                    as_capacity_curve_result(_gamma_cmp_res),
+                    "#8e44ad",
+                ))
+            except ValueError as e:
+                _gamma_cmp_error = str(e)
+
+        if _gamma_cmp_error:
+            st.warning(f"Кривая метода γ_T недоступна: {_gamma_cmp_error}")
+        elif has_dims:
+            st.caption(
+                "Кривая «γ_T (равномерный прогрев)» — альтернативная методика (вкладка "
+                "«Метод γ_T») с той же нагрузкой и маркой стали: Ryn берётся из таблицы "
+                "прочности стали, поперечная сила Q — как опорная реакция P/2 + qL/2, "
+                "обогрев принят по всем 4 сторонам."
+            )
+
         if _cmp_scenarios:
             st.plotly_chart(make_comparison_chart(_cmp_scenarios), width="stretch")
 
@@ -1156,9 +1203,7 @@ def main():
                     horizontal=True, key="exposure_gamma",
                 )
             with col_load2:
-                _q_default = 0.0
-                if inputs_ok:
-                    _q_default = (load_value * 9.80665e-3) / 2.0 + (m_dim * length_value * 9.80665e-3) / 2.0
+                _q_default = _gamma_default_shear_kn()
                 q_gamma = st.number_input(
                     "Поперечная сила Q, кН",
                     min_value=0.0, value=float(round(_q_default, 3)), step=1.0, format="%.3f",
@@ -1181,12 +1226,7 @@ def main():
 
             _exposure_code = "4_sides" if exposure_gamma == "4 стороны" else "3_sides"
 
-            _profile_row = None
-            _dims_gamma = None
-            if custom_profile is not None:
-                _dims_gamma = {"h": h_dim, "b": b_dim, "tf": t_dim, "tw": s_dim}
-            else:
-                _profile_row = db.get_profile_data(selected_doc).loc[selected_profile].squeeze()
+            _profile_row, _dims_gamma = _gamma_profile_args()
 
             gamma_res = None
             try:

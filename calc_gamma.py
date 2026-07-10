@@ -26,6 +26,7 @@ from typing import Optional
 
 import math
 
+import numpy as np
 import pandas as pd
 
 from calc import SteelDatabase
@@ -214,6 +215,68 @@ class BendingGammaResult:
     delta_np_mm: float
     history: pd.DataFrame
     fire_limit_minute: Optional[float]
+    m_load_knm: float
+    capacity_curve: pd.DataFrame          # "Время, мин" (целые), "Несущая способность, кНм"
+    capacity_fire_limit_minute: Optional[int]
+
+
+@dataclass
+class GammaCapacityCurve:
+    """Тонкая обёртка над результатом метода γ_T с теми же тремя атрибутами,
+    что использует main.make_comparison_chart для FireCalcResult — позволяет
+    наложить кривую несущей способности по γ_T на общий график сравнения
+    без изменения самой функции построения графика."""
+    load_capacity: pd.DataFrame
+    applied_moment_value: float
+    fire_limit_minute: Optional[int]
+
+
+def as_capacity_curve_result(result: "BendingGammaResult") -> GammaCapacityCurve:
+    return GammaCapacityCurve(
+        load_capacity=result.capacity_curve,
+        applied_moment_value=result.m_load_knm,
+        fire_limit_minute=result.capacity_fire_limit_minute,
+    )
+
+
+def _capacity_curve_per_minute(
+    db: SteelDatabase, grade: str, m_load_knm: float, gamma_t: float,
+    history: pd.DataFrame, max_time_min: float,
+) -> dict:
+    """Несущая способность (кНм) на целых минутах — по аналогии с
+    load_capacity в calc.FireCalcResult, чтобы кривую можно было сравнивать
+    с результатами основной методики на одном графике.
+
+    При 20°C несущая способность равна M / γ_T (запас по худшей из проверок —
+    изгиб или сдвиг). При нагреве оба коэффициента γ_T масштабируются с Ry(T)
+    одинаково (Rs = 0.58·Ry), поэтому несущая способность снижается
+    пропорционально тому же коэффициенту k(T) = Ry(T)/Ry(20°C), что и в
+    основной методике (calc.py)."""
+    minutes = np.arange(int(max_time_min) + 1)
+    t_hist = history["Время, мин"].to_numpy(dtype=float)
+    steel_hist = history["Сталь (равномерный прогрев), °C"].to_numpy(dtype=float)
+    steel_at_minutes = np.interp(minutes, t_hist, steel_hist)
+
+    yield_at_t = db.interpolate_strength(pd.Series(steel_at_minutes), grade)
+    k_t = yield_at_t / yield_at_t[0]
+
+    m_cap0 = m_load_knm / gamma_t if gamma_t > 0 else float("inf")
+    capacity = m_cap0 * k_t
+
+    load_capacity = pd.DataFrame({
+        "Время, мин": minutes,
+        "Несущая способность, кНм": capacity,
+    })
+
+    holds = capacity > m_load_knm
+    if holds.all():
+        fire_limit = None
+    elif not holds.any():
+        fire_limit = 0
+    else:
+        fire_limit = int(minutes[holds][-1])
+
+    return {"load_capacity": load_capacity, "fire_limit_minute": fire_limit}
 
 
 def compute_bending_gamma(
@@ -263,6 +326,10 @@ def compute_bending_gamma(
 
     heating = simulate_heating(delta_np_mm, crit_res["value"], max_time_min=max_time_min)
 
+    capacity = _capacity_curve_per_minute(
+        db, grade, m_load_knm, gamma_t, heating["history"], max_time_min,
+    )
+
     return BendingGammaResult(
         geometry=geometry,
         c1=c1_res["value"], c1_trace=c1_res["trace"],
@@ -270,4 +337,7 @@ def compute_bending_gamma(
         critical_temp=crit_res["value"], critical_temp_trace=crit_res["trace"],
         perimeter_mm=perimeter_mm, delta_np_mm=delta_np_mm,
         history=heating["history"], fire_limit_minute=heating["fire_limit_minute"],
+        m_load_knm=m_load_knm,
+        capacity_curve=capacity["load_capacity"],
+        capacity_fire_limit_minute=capacity["fire_limit_minute"],
     )
