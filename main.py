@@ -953,17 +953,26 @@ def main():
     with tab3:
         st.subheader("Несущая способность: без ОГЗ и с ОГЗ (ГКЛ)")
         st.caption(
-            "Три варианта огнезащиты для текущего профиля, стали, нагрузки и пролёта "
-            "(см. боковую панель): без защиты (встроенные данные), 1 слой ГКЛ и "
-            "2 слоя ГКЛ (по данным листов «температура с ОГЗ.xlsx»)."
+            "Варианты огнезащиты для текущего профиля, стали, нагрузки и пролёта "
+            "(см. боковую панель): без защиты (встроенные данные), 1 и 2 слоя ГКЛ "
+            "при обогреве по 3 сторонам, а также те же толщины ГКЛ по методике "
+            "Яковлева при обогреве по всем 4 сторонам (по данным листов «температура "
+            "с ОГЗ.xlsx»)."
         )
 
         _cmp_specs = [
-            ("Без ОГЗ",           None,          "#e60000"),
-            ("ОГЗ: 1 слой ГКЛ",   "1 слой ГКЛ",  "#f39c12"),
-            ("ОГЗ: 2 слой ГКЛ",   "2 слой ГКЛ",  "#2ecc71"),
+            ("Без ОГЗ",                                    None,
+             "#e60000"),
+            ("ОГЗ: 1 слой ГКЛ (3 стороны)",                 "1 слой ГКЛ",
+             "#f39c12"),
+            ("ОГЗ: 2 слой ГКЛ (3 стороны)",                 "2 слой ГКЛ",
+             "#2ecc71"),
+            ("ОГЗ: 1 слой ГКЛ, 4 стороны (мет. Яковлева)",  "1 слой ГКЛ (методика Яковлева)",
+             "#2980b9"),
+            ("ОГЗ: 2 слоя ГКЛ, 4 стороны (мет. Яковлева)",  "2 слоя ГКЛ (методика Яковлева)",
+             "#16a085"),
         ]
-        _cmp_scenarios = []
+        _cmp_scenarios_all = []
         _cmp_missing = []
         for _label, _sheet_key, _color in _cmp_specs:
             try:
@@ -982,7 +991,7 @@ def main():
             except ValueError as e:
                 st.error(f"{_label}: {e}")
                 continue
-            _cmp_scenarios.append((_label, _res_cmp, _color))
+            _cmp_scenarios_all.append((_label, _res_cmp, _color))
 
         if _cmp_missing:
             st.warning(
@@ -996,16 +1005,16 @@ def main():
                 _profile_row_cmp, _dims_cmp = _gamma_profile_args()
                 _ry0_cmp = float(db.get_strength_data()[selected_grade].iloc[0])
                 _max_minutes_cmp = 60
-                if _cmp_scenarios:
+                if _cmp_scenarios_all:
                     _max_minutes_cmp = max(
-                        60, int(max(_r.load_capacity["Время, мин"].max() for _, _r, _ in _cmp_scenarios))
+                        60, int(max(_r.load_capacity["Время, мин"].max() for _, _r, _ in _cmp_scenarios_all))
                     )
                 _gamma_cmp_res = compute_bending_gamma(
                     db, selected_grade, _ry0_cmp, res.applied_moment_value, _gamma_default_shear_kn(),
                     exposure="3_sides", gamma_c=1.0, max_time_min=_max_minutes_cmp,
                     profile=_profile_row_cmp, dims=_dims_cmp,
                 )
-                _cmp_scenarios.append((
+                _cmp_scenarios_all.append((
                     "γT (равномерный прогрев)",
                     as_capacity_curve_result(_gamma_cmp_res),
                     "#8e44ad",
@@ -1022,6 +1031,18 @@ def main():
                 "прочности стали, поперечная сила Q — как опорная реакция P/2 + qL/2, "
                 "обогрев принят по 3 сторонам (как и на других вкладках)."
             )
+
+        if _cmp_scenarios_all:
+            _cmp_labels_all = [_label for _label, _, _ in _cmp_scenarios_all]
+            _cmp_selected = st.multiselect(
+                "Кривые на графике",
+                options=_cmp_labels_all,
+                default=_cmp_labels_all,
+                key="cmp_curves_visible",
+            )
+            _cmp_scenarios = [s for s in _cmp_scenarios_all if s[0] in _cmp_selected]
+        else:
+            _cmp_scenarios = []
 
         if _cmp_scenarios:
             st.plotly_chart(make_comparison_chart(_cmp_scenarios), width="stretch")
